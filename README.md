@@ -56,5 +56,6 @@ Implementation Thoughts
 Implement daemons in python, log to stdout and stderr.
 
 Dependencies:
-    kazoo - ZooKeeper client
-    psycopg2 - connections to PostgreSQL
+
+ * kazoo - ZooKeeper client
+ * psycopg2 - connections to PostgreSQL
