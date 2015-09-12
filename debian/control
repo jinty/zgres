@@ -1,0 +1,28 @@
+Source: zgres
+Section: python
+Priority: extra
+Maintainer: Brian Sutherland <brian@vanguardistas.net>
+Build-Depends: debhelper, python3-all, python3-setuptools, dh-python, dh-systemd
+Standards-Version: 3.9.2
+
+Package: python3-zgres
+Architecture: all
+Depends: ${python:Depends}, ${misc:Depends}
+Provides: ${python:Provides}
+Description: PostgreSQL database connection and failover manager
+ Manages PostgreSQL database connections and failover for Master-Slave
+ clusters
+
+Package: zgres-sync
+Architecture: all
+Depends: python3-zgres, ${misc:Depends}
+Description: Maintain the local machine in-sync with PostgreSQL clusters
+ Manages PostgreSQL database connections and failover for Master-Slave
+ clusters
+
+Package: zgres-deadman
+Architecture: all
+Depends: python3-zgres, ${misc:Depends}
+Description: Control/Monitor Postgresql and register with ZooKeeper
+ Manages PostgreSQL database connections and failover for Master-Slave
+ clusters

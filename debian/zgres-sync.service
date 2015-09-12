@@ -1,0 +1,18 @@
+[Unit]
+Description=Zgres Database Info Sync
+
+[Service]
+User=root
+PrivateTmp=true
+ProtectHome=read-only
+NoNewPrivileges=true
+PrivateDevices=true
+ExecStart=/usr/bin/zgres-sync
+Restart=on-failure
+#StartLimitInterval=5min
+#StartLimitBurst=4
+#StartLimitAction=reboot-force
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,5 @@
+# Ignore changes on .egg-info directory to prevent issue while building
+# twice as dpkg-source do not ignore the automatic patch anymore. Deleting
+# the files does not work as it was generated through sdist target using
+# SVN, thus some files might be missing (such as zcml or txt files).
+extend-diff-ignore = "\.egg-info"

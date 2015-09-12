@@ -1,0 +1,5 @@
+include version.py
+include translations.py
+include RELEASE-VERSION
+include debian/*
+include debian/source/*
