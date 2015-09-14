@@ -10,7 +10,7 @@ setup(name="zgres",
       version=version,
       packages=find_packages(),
       install_requires=['kazoo'],
-      description="Database Connection and failiver manager for PostgreSQL",
+      description="Database Connection and failover manager for PostgreSQL",
       entry_points={
           'console_scripts': [
               'zgres-apply = zgres.apply:apply_cli',
