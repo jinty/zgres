@@ -160,9 +160,5 @@ This daemon gets run on all machines which need to know the database connection
 info, that means appservers and probably database nodes if you use streaming
 replication.
 """)
-    parser.add_argument('--config-file',
-            dest='config_file',
-            default='/etc/zgres/example.ini',
-            help='sum the integers (default: find the max)')
     config = zgres.config.parse_args(parser, argv)
     sys.exit(_sync(config))

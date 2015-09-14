@@ -2,6 +2,12 @@
 import logging
 import configparser
 
+def common_args(parser):
+    parser.add_argument('--config-file',
+            dest='config_file',
+            default='/etc/zgres/example.ini',
+            help='Use this config file')
+
 def setup_logging(config):
     logging.basicConfig(level=logging.WARN)
 

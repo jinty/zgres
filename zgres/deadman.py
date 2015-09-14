@@ -1,18 +1,23 @@
 import sys
-from zgres import apply
+
+import zgres._plugin
+import zgres.config
+
+def _run_startup():
+    raise Exception('Not implemented error')
 
 def _deadman(config):
-    raise NotImplementedError()
+    # poor man's state machine
+    # let's see if we can do it with just this... if not, oh well.
+    state = 'startup'
+    handlers = globals()
+    while True:
+        handler = _HANDLERS['_run_' + state]
+        state = handler()
 
 #
 # Command Line Scripts
 #
-
-def _parse_args(parser, argv):
-    # TODO: add args for setting loglevel here
-    args = parser.parse_args(args=argv[1:])
-    apply._setup_logging()
-    return args
 
 def deadman_cli(argv=sys.argv):
     parser = argparse.ArgumentParser(description="""Monitors/controls the local postgresql installation.
@@ -34,7 +39,6 @@ It does not:
     - maintain streaming replication (use zgres-apply hooks for that)
     - do remastering (assumed to have happened before we start)
 """)
-    args = _parse_args(parser, argv)
-    config = apply.Config()
+    config = zgres.config.parse_args(parser, argv)
     sys.exit(_deadman(config))
 
