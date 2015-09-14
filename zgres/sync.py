@@ -2,6 +2,7 @@ import os
 import sys
 import json
 
+from pkg_resources import iter_entry_points
 from kazoo.client import KazooClient
 
 import zgres.config
@@ -9,7 +10,7 @@ import zgres.config
 def _watch_node(zookeeper_base_path, node, state, notify):
     """Watch a single node in zookeeper for data changes."""
     child_path = zookeeper_base_path + node
-    def watch_node(data, stat):
+    def watch_node(data, state):
         try:
             if data is None:
                 state.pop(node, None)
@@ -23,9 +24,9 @@ def _watch_node(zookeeper_base_path, node, state, notify):
             raise
     return zk.DataWatch(child_path, watch_node)
 
-def watch_cluster_group(zk, zookeeper_base_path, notify):
+def watch_cluster_groups(zk, zookeeper_base_path, notify):
     """Watch for changes in the list of children.
-    
+
     This method returns a "state" dictionary which is kept in-sync with a
     directory in zookeeper. i.e. the "files" in zookeeper are a key in the dict
     and the data in the file is the value. Data is assumed to be in the JSON
@@ -56,7 +57,7 @@ def watch_cluster_group(zk, zookeeper_base_path, notify):
             raise
     return state, zk.ChildrenWatch(zookeeper_base_path, watch, send_event=True)
 
-def state_to_databases(state):
+def state_to_databases(state, get_state):
     """Convert the state to a dict of connectable database clusters.
 
     The dict is:
@@ -88,49 +89,77 @@ def state_to_databases(state):
                             ...extra node data...
                             }}},
                             }}
+
+    if get_state=True, then node data will be the contents of the state-
+    znodes. If get_state=False, the node data will be the contents of the 
+    conn- znodes.
     """
     databases = {}
-    for ip4, v in state.items():
-        if ip4.startswith('master-'):
-            continue
-        database = databases.setdefault(v['cluster_name'], dict(nodes={}))
-        assert ip4 not in database['nodes']
-        database['nodes'] = v
     for node, v in state.items():
-        if not node.startswith('master-'):
-            continue
-        _, cluster_name = node.split('-', 1)
-        cluster = databases.get(cluster_name)
-        if cluster is not None:
+        if node.startswith('state-') and get_state:
+            _, ip4 = node.split('-', 1)
+            database = databases.setdefault(v['cluster_name'], dict(nodes={}))
+            assert ip4 not in database['nodes']
+            database['nodes'][ip4] = v
+        if node.startswith('conn-') and not get_state:
+            _, ip4 = node.split('-', 1)
+            database = databases.setdefault(v['cluster_name'], dict(nodes={}))
+            assert ip4 not in database['nodes']
+            database['nodes'][ip4] = v
+        if node.startswith('master-'):
+            _, cluster_name = node.split('-', 1)
+            cluster = databases.setdefault(cluster_name, dict(nodes={}))
             cluster['master'] = v
     return databases
 
+def _configured_plugins(config, daemon, group):
+    configured_plugins = [c.strip() for c in config[daemon][group].split(',')]
+    for i in iter_entry_points('zgres.' + group):
+        if i.name in configured_plugins:
+            plugin_factory = i.load(require=False) #EEK never auto install ANYTHING
+            plugin_config = config.get(i.name, {})
+            yield plugin_factory(**plugin_config)
+
+def _call_plugins(plugins, *args):
+    for plugin in plugins:
+        try:
+            plugin(*args)
+        except:
+            logging.error('Calling plugin {} failed with args: {}'.format(plugin, args))
+            logging.exception()
+
 def _sync(config):
     """Synchronize local machine configuration with zookeeper.
-    
-    - Connect to zookeeper using zookeeper_connection_string from environment.json
-    - Watch the ZK directory configured in environment.json (i.e. the value of zgres_databases_path)
-    - Write out /var/lib/zgres/databases.json whenever this changes
-    - call zgres-apply on any changes in databases.json
+
+    Connect to zookeeper and call our plugins with new state as it becomes available.
     """
     state = {}
-    zk = KazooClient(hosts=config['zookeeper_connection_string'])
+    zk = KazooClient(hosts=config['sync']['zookeeper_connection_string'])
+    connection_info_plugins = _configured_plugins(config, 'sync', 'conn')
+    state_plugins = _configured_plugins(config, 'sync', 'state')
+    if not state_plugins and not connection_info_plugins:
+        raise Exception('No plugins configured for zgres-sync')
     notifiy_queue = queue.Queue()
     def notify_main_thread(fatal_error=False):
         # poor man's async framework
         notifiy_queue.put(fatal_error)
-    state, watcher = watch_cluster_group(zk, config['zookeeper_path'], notify_main_thread)
-    old_databases = None
+    state, watcher = watch_cluster_group(zk, config['sync']['zookeeper_path'], notify_main_thread)
+    old_connection_info = None
     while True:
         fatal_error = notifiy_queue.get() # blocks till we get some new data from zookeeper
         if fatal_error:
             raise Exception('Got a fatal error, shutting down. Hopefully some info in the logs above! and hope systemd restarts us!')
-        databases = state_to_databases(state)
-        if old_databases != databases:
-            with open('/var/lib/zgres/databases.json.tmp', 'w') as f:
-                f.write(json.dumps(databases, sort_keys=True))
-            os.rename('/var/lib/zgres/databases.json.tmp', '/var/lib/zgres/databases.json')
-            check_call('zgres-apply') # apply the configuration to the machine
+        if state_plugins:
+            databases_with_state = state_to_databases(state, True)
+            _call_plugins(state_plugins, databases_with_state)
+        if connection_info_plugins:
+            connection_info = state_to_databases(state, False)
+            if old_connection_info == connection_info:
+                # Optimization: if the connection_info has not changed since the last event,
+                # don't call our plugins again
+                continue
+            _call_plugins(connection_info_plugins, connection_info)
+            old_connection_info = connection_info
 
 #
 # Command Line Scripts
@@ -151,4 +180,4 @@ replication.
             default='/etc/zgres/example.ini',
             help='sum the integers (default: find the max)')
     config = zgres.config.parse_args(parser, argv)
-    sys.exit(_sync(config)['sync'])
+    sys.exit(_sync(config))
