@@ -40,19 +40,20 @@ directory with 4 znode types:
         This is not created/modified by either the "sync" or "deadman"
         daemon
 
-    postgres-{IPADDR}[:{PORT}]
+    state-{IPADDR}[:{PORT}]
         This contains all the information about a database cluster, healthy or
         not. It is updated frequently with data such as the WAL log
         replay status. It is an ephemeral node and will dissapear if
         the cluster goes down or the connection to zookeeper is lost.
         Ephemeral, created/maintained by the "deadman" daemon.
 
-    healthy-{IPADDR}[:{PORT}]
-        This znode contains static information about a single healthy
-        cluster. If the node is not "healthy", this entry will not exist. The
-        information in this znode is not vollatile and is gaurenteed not
-        to change over the lifespan of the znode.
-        Ephemeral, created/maintained by the "deadman" daemon.
+    conn-{IPADDR}[:{PORT}]
+        This znode contains a subset of information from the state-
+        node. It is the static connection information/metadata about a single
+        healthy (i.e. connectable) cluster. If the node is not "healthy", this
+        entry will not exist. The information in this znode is not vollatile and
+        is gaurenteed not to change over the lifespan of the znode.  Ephemeral,
+        created/maintained by the "deadman" daemon.
 
     master-{DATABASE_GROUP_NAME}
         This contains the IPADDR of the current master for the database
@@ -83,12 +84,12 @@ specified in 2 ways:
 
     * Using setuptools entry points to subscribe in-process to the
       changes. This allows subscribers to subscribe to events from
-      either postgres-, master- or healthy- znodes.
+      either state-, master- or healthy- znodes.
     * Provide an executable which will be called with the path to a
       JSON encoded file containing the information from the healthy-
       and master- znodes. This is provided by the zgres-apply package
       which plugs into zgres-sync using the previous plugin method.
-      This plugin does not recieve postgres- events for performance
+      This plugin does not recieve state- events for performance
       reasons.
 
 These plugins MUST be idempotent, they will be called repeatedly with
@@ -98,7 +99,7 @@ Deadman Daemon
 --------------
 
 This daemon controls one PostgreSQL database cluster and registers it in
-zookeeper (creating/maintaining the postgres-, healthy- and master-
+zookeeper (creating/maintaining the state-, conn- and master-
 znodes). It must run on the same machine as the database cluster.
 
 It is responsible for promoting or shutting down it's postgresql
