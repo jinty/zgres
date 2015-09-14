@@ -27,7 +27,7 @@ import json
 import sys
 import logging
 import argparse
-from subprocess import call
+from subprocess import call, check_call
 from collections import abc
 
 #
@@ -114,6 +114,15 @@ def _apply(_prefix=_DEFAULT_PREFIX):
     hooks = os.path.join(_prefix, 'hooks')
     failures = _run_hooks(hooks, cfg_dir)
     return failures
+
+def conn_info_plugin(state):
+    with open('/var/lib/zgres/config/databases.json.tmp', 'w') as f:
+        f.write(json.dumps(state, sort_keys=True))
+    os.rename('/var/lib/zgres/config/databases.json.tmp', '/var/lib/zgres/config/databases.json')
+    check_call('zgres-apply') # apply the configuration to the machine
+
+def conn_info_plugin_factory():
+    return conn_info_plugin
 
 #
 # Command Line Scripts
