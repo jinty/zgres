@@ -11,14 +11,15 @@ setup(name="zgres",
       packages=find_packages(),
       install_requires=['kazoo'],
       description="Database Connection and failiver manager for PostgreSQL",
-      entry_points = {
+      entry_points={
           'console_scripts': [
               'zgres-apply = zgres.apply:apply_cli',
               'zgres-sync = zgres.sync:sync_cli',
               'zgres-deadman = zgres.deadman:deadman_cli',
-          ],
+              ],
           'zgres.conn': [
               'zgres-apply = zgres.apply:conn_info_plugin_factory',
+              ],
           },
       include_package_data = True,
       zip_safe = True,
