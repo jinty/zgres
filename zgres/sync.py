@@ -4,7 +4,7 @@ import json
 
 from kazoo.client import KazooClient
 
-from zgres import apply
+import zgres.config
 
 def _watch_node(zookeeper_base_path, node, state, notify):
     """Watch a single node in zookeeper for data changes."""
@@ -113,14 +113,13 @@ def _sync(config):
     - Write out /var/lib/zgres/databases.json whenever this changes
     - call zgres-apply on any changes in databases.json
     """
-    config = config['environment.json']
     state = {}
     zk = KazooClient(hosts=config['zookeeper_connection_string'])
     notifiy_queue = queue.Queue()
     def notify_main_thread(fatal_error=False):
         # poor man's async framework
         notifiy_queue.put(fatal_error)
-    state, watcher = watch_cluster_group(zk, config['zgres_databases_path'], notify_main_thread)
+    state, watcher = watch_cluster_group(zk, config['zookeeper_path'], notify_main_thread)
     old_databases = None
     while True:
         fatal_error = notifiy_queue.get() # blocks till we get some new data from zookeeper
@@ -137,12 +136,6 @@ def _sync(config):
 # Command Line Scripts
 #
 
-def _parse_args(parser, argv):
-    # TODO: add args for setting loglevel here
-    args = parser.parse_args(args=argv[1:])
-    apply._setup_logging()
-    return args
-
 def sync_cli(argv=sys.argv):
     parser = argparse.ArgumentParser(description="""Start synchronization daemon
 This daemon connects to zookeeper an watches for changes to the database config.
@@ -153,6 +146,9 @@ This daemon gets run on all machines which need to know the database connection
 info, that means appservers and probably database nodes if you use streaming
 replication.
 """)
-    args = _parse_args(parser, argv)
-    config = apply.Config()
-    sys.exit(_sync(config))
+    parser.add_argument('--config-file',
+            dest='config_file',
+            default='/etc/zgres/example.ini',
+            help='sum the integers (default: find the max)')
+    config = zgres.config.parse_args(parser, argv)
+    sys.exit(_sync(config)['sync'])
