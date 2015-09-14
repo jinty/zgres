@@ -5,6 +5,7 @@ import json
 from pkg_resources import iter_entry_points
 from kazoo.client import KazooClient
 
+import zgres._plugin
 import zgres.config
 
 def _watch_node(zookeeper_base_path, node, state, notify):
@@ -112,31 +113,15 @@ def state_to_databases(state, get_state):
             cluster['master'] = v
     return databases
 
-def _configured_plugins(config, daemon, group):
-    configured_plugins = [c.strip() for c in config[daemon][group].split(',')]
-    for i in iter_entry_points('zgres.' + group):
-        if i.name in configured_plugins:
-            plugin_factory = i.load(require=False) #EEK never auto install ANYTHING
-            plugin_config = config.get(i.name, {})
-            yield plugin_factory(**plugin_config)
-
-def _call_plugins(plugins, *args):
-    for plugin in plugins:
-        try:
-            plugin(*args)
-        except:
-            logging.error('Calling plugin {} failed with args: {}'.format(plugin, args))
-            logging.exception()
-
 def _sync(config):
     """Synchronize local machine configuration with zookeeper.
 
     Connect to zookeeper and call our plugins with new state as it becomes available.
     """
     state = {}
-    zk = KazooClient(hosts=config['sync']['zookeeper_connection_string'])
-    connection_info_plugins = _configured_plugins(config, 'sync', 'conn')
-    state_plugins = _configured_plugins(config, 'sync', 'state')
+    zk = KazooClient(hosts=config['global']['zookeeper_connection_string'])
+    connection_info_plugins = zgres._plugin.get_configured_plugins(config, 'zgres.conn')
+    state_plugins = zgres._plugin.get_configured_plugins(config, 'zgres.state')
     if not state_plugins and not connection_info_plugins:
         raise Exception('No plugins configured for zgres-sync')
     notifiy_queue = queue.Queue()
@@ -151,14 +136,14 @@ def _sync(config):
             raise Exception('Got a fatal error, shutting down. Hopefully some info in the logs above! and hope systemd restarts us!')
         if state_plugins:
             databases_with_state = state_to_databases(state, True)
-            _call_plugins(state_plugins, databases_with_state)
+            zgres._plugin.call_plugins(state_plugins, databases_with_state)
         if connection_info_plugins:
             connection_info = state_to_databases(state, False)
             if old_connection_info == connection_info:
                 # Optimization: if the connection_info has not changed since the last event,
                 # don't call our plugins again
                 continue
-            _call_plugins(connection_info_plugins, connection_info)
+            zgres._plugin.call_plugins(connection_info_plugins, connection_info)
             old_connection_info = connection_info
 
 #
