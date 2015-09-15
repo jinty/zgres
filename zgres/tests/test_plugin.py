@@ -5,19 +5,13 @@ import pytest
 
 from .._plugin import *
 
-def mock_iter_entry_points(*names):
-    for i in names:
-        m = Mock()
-        m.name = i
-        yield m
-
 def test_real_plugins():
     config = ConfigParser()
     config.read_dict({
-        'global': {
+        'sync': {
             'zgres.conn': 'zgres-apply',
             }})
-    plugins = get_configured_plugins(config, 'zgres.conn')
+    plugins = get_configured_plugins(config, 'sync', 'zgres.conn')
     from zgres.apply import conn_info_plugin
     assert plugins == [('zgres-apply', conn_info_plugin)]
 
@@ -27,30 +21,29 @@ def test_multiple_plugins(iter_entry_points):
     plugin1.name = 'plugin1'
     plugin2 = Mock()
     plugin2.name = 'plugin2'
-    iter_entry_points.return_value = iter([plugin2, plugin1])
+    plugin3 = Mock()
+    plugin3.name = 'plugin3'
+    iter_entry_points.return_value = [plugin2, plugin3, plugin1]
     config = ConfigParser()
     config.read_dict({
         'global': {
             'whatever': 'plugin1,plugin2',
+            'whatever_reverse': 'plugin2,plugin1',
+            'other': 'plugin2,plugin3',
             }})
-    plugins = get_configured_plugins(config, 'whatever')
+    plugins = get_configured_plugins(config, 'global', 'whatever')
     plugin1.load.assert_called_once_with(require=False)
     plugin1.load().assert_called_once_with()
     assert plugins == [('plugin1', plugin1.load()()), ('plugin2', plugin2.load()())]
+    # reverse order in the config file and you see the plugins are returned in that order
+    plugins = get_configured_plugins(config, 'global', 'whatever_reverse')
+    assert plugins == [('plugin2', plugin2.load()()), ('plugin1', plugin1.load()())]
     # try now with only one plugin configured
-    plugin2.reset_mock()
-    plugin1.reset_mock()
-    iter_entry_points.return_value = iter([plugin2, plugin1])
-    config = ConfigParser()
-    config.read_dict({
-        'global': {
-            'whatever': 'plugin2',
-            }})
-    plugins = get_configured_plugins(config, 'whatever')
-    plugin2.load.assert_called_once_with(require=False)
-    plugin2.load().assert_called_once_with()
-    assert plugins == [('plugin2', plugin2.load()())]
-    assert not plugin1.load.called
+    assert not plugin3.load.called
+    plugins = get_configured_plugins(config, 'global', 'other')
+    plugin3.load.assert_called_once_with(require=False)
+    plugin3.load().assert_called_once_with()
+    assert plugins == [('plugin2', plugin2.load()()), ('plugin3', plugin3.load()())]
 
 @patch('zgres._plugin.iter_entry_points')
 def test_plugin_configure(iter_entry_points):
@@ -66,7 +59,7 @@ def test_plugin_configure(iter_entry_points):
             'argA': 'A',
             'argB': 'B',
             }})
-    plugins = get_configured_plugins(config, 'whatever')
+    plugins = get_configured_plugins(config, 'global', 'whatever')
     plugin1.load.assert_called_once_with(require=False)
     plugin1.load().assert_called_once_with(arga='A', argb='B')
 
