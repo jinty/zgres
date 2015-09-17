@@ -1,20 +1,14 @@
 import sys
+import asyncio
 import argparse
 
 import zgres._plugin
 import zgres.config
-
-def _run_startup():
-    raise Exception('Not implemented error')
+from zgres import utils
 
 def _deadman(config):
-    # poor man's state machine
-    # let's see if we can do it with just this... if not, oh well.
-    state = 'startup'
-    handlers = globals()
-    while True:
-        handler = _HANDLERS['_run_' + state]
-        state = handler()
+    # ASYNC
+    return utils.run_asyncio()
 
 #
 # Command Line Scripts
