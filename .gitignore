@@ -1,2 +1,9 @@
 /zgres.egg-info
-dist
+/dist
+*.pyc
+*.pyo
+/.tox
+/eggs
+/develop-eggs
+/bin
+/.installed.cfg
