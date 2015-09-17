@@ -66,34 +66,6 @@ def test_multiple_plugins(iter_entry_points):
     plugin3.load.assert_called_once_with(require=False)
     assert plugins == [('plugin2', plugin2.load()), ('plugin3', plugin3.load())]
 
-def test_call_plugin():
-    plugin1 = Mock()
-    plugin2 = Mock()
-    plugin2.side_effect = Exception('boom')
-    plugin3 = Mock()
-    call_plugins([
-        ('p1', plugin1),
-        ('p2', plugin2),
-        ('p3', plugin3),
-        ], 'arg1')
-    plugin1.assert_called_once_with('arg1')
-    plugin2.assert_called_once_with('arg1')
-    plugin3.assert_called_once_with('arg1')
-    # we never catch KeyboardInterrupt. so use that to test that we did indeed raise an exception
-    plugin1.reset_mock()
-    plugin2.reset_mock()
-    plugin3.reset_mock()
-    plugin2.side_effect = KeyboardInterrupt()
-    with pytest.raises(KeyboardInterrupt) as exec:
-        call_plugins([
-            ('p1', plugin1),
-            ('p2', plugin2),
-            ('p3', plugin3),
-            ], 'arg1')
-    plugin1.assert_called_once_with('arg1')
-    plugin2.assert_called_once_with('arg1')
-    assert not plugin3.called
-
 def test_get_event_handler():
     log = []
     plugins = configure([

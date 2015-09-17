@@ -58,10 +58,7 @@ def get_event_handler(setup_plugins, events):
         setattr(Handler, event_name, executor)
     return Handler()
 
-def call_plugins(plugins, *args):
-    """Call a set of plugins with arguments"""
-    for name, plugin in plugins:
-        try:
-            plugin(*args)
-        except Exception:
-            logging.exception('Calling plugin {} ({}) failed with args: {}'.format(name, plugin, args))
+def get_plugins(config, section, events, *plugin_config_args, **plugin_config_kw):
+    plugins = load(config, section)
+    plugins = configure(plugins, *plugin_config_args, **plugin_config_kw)
+    return get_event_handler(plugins, events)
