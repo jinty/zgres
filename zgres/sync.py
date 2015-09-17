@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import asyncio
+import argparse
 from functools import partial
 
 from pkg_resources import iter_entry_points
@@ -11,14 +12,16 @@ import zgres._plugin
 import zgres.config
 from zgres import utils
 
-def _watch_node(zookeeper_base_path, node, state, notify):
+def _watch_node(zk, zookeeper_base_path, node, state, notify):
     """Watch a single node in zookeeper for data changes."""
+    if not zookeeper_base_path.endswith('/'):
+        zookeeper_base_path += '/'
     child_path = zookeeper_base_path + node
-    def watch_node(data, state):
+    def watch_node(data, stat, event):
         if data is None:
             state.pop(node, None)
         else:
-            data = json.loads(data)
+            data = json.loads(data.decode('utf-8'))
             state[node] = data
         notify()
     loop = asyncio.get_event_loop()
@@ -43,13 +46,13 @@ def watch_cluster_groups(zk, zookeeper_base_path, plugins):
             state.pop(i, None)
             del child_watchers[i]
         for node in to_add:
-            child_watchers[node] = _watch_node(zookeeper_base_path, node, state, notify)
+            child_watchers[node] = _watch_node(zk, zookeeper_base_path, node, state, notify)
         if to_delete:
             # _watch_node will call notify() in case of to_add
             notify()
     loop = asyncio.get_event_loop()
     watch = partial(loop.call_soon_threadsafe, watch) # execute in main thread
-    return zk.ChildrenWatch(zookeeper_base_path, watch)
+    return state, zk.ChildrenWatch(zookeeper_base_path, watch)
 
 def state_to_databases(state, get_state):
     """Convert the state to a dict of connectable database clusters.
@@ -90,18 +93,21 @@ def state_to_databases(state, get_state):
     """
     databases = {}
     for node, v in state.items():
-        if node.startswith('state-') and get_state:
-            _, ip4 = node.split('-', 1)
-            database = databases.setdefault(v['cluster_name'], dict(nodes={}))
+        parts = node.split('_', 1)
+        if len(parts) == 1:
+            continue
+        cluster_name, node = parts
+        if node.startswith('state_') and get_state:
+            _, ip4 = node.split('_', 1)
+            database = databases.setdefault(cluster_name, dict(nodes={}))
             assert ip4 not in database['nodes']
             database['nodes'][ip4] = v
-        if node.startswith('conn-') and not get_state:
-            _, ip4 = node.split('-', 1)
-            database = databases.setdefault(v['cluster_name'], dict(nodes={}))
+        if node.startswith('conn_') and not get_state:
+            _, ip4 = node.split('_', 1)
+            database = databases.setdefault(cluster_name, dict(nodes={}))
             assert ip4 not in database['nodes']
             database['nodes'][ip4] = v
-        if node.startswith('master-'):
-            _, cluster_name = node.split('-', 1)
+        if node == 'master':
             cluster = databases.setdefault(cluster_name, dict(nodes={}))
             cluster['master'] = v
     return databases
@@ -119,22 +125,19 @@ def make_notify(state, plugins):
                 # Optimization: if the connection_info has not changed since the last event,
                 # don't call our plugins again
                 return
-            zgres._plugin.call_plugins(connection_info_plugins, connection_info)
+            plugins.conn_info(connection_info)
             old_connection_info = connection_info
+    return notify
 
-def _sync(config):
+def _sync(config, zk):
     """Synchronize local machine configuration with zookeeper.
 
     Connect to zookeeper and call our plugins with new state as it becomes available.
     """
-    state = {}
-    zk = KazooClient(hosts=config['sync']['zookeeper_connection_string'])
-    plugins = zgres._plugin.get_configured_plugins(config, 'sync')
+    plugins = zgres._plugin.get_plugins(config, 'sync', ['state', 'conn_info'], config, zk)
     if plugins.state is None and plugins.conn_info is None:
         raise Exception('No plugins configured for zgres-sync')
-    state = {}
-    watcher = watch_cluster_group(zk, config['sync']['zookeeper_path'], plugins)
-    utils.run_asyncio()
+    return watch_cluster_groups(zk, config['sync']['zookeeper_path'], plugins)
 
 #
 # Command Line Scripts
@@ -151,4 +154,9 @@ info, that means appservers and probably database nodes if you use streaming
 replication.
 """)
     config = zgres.config.parse_args(parser, argv)
-    sys.exit(_sync(config))
+    zk = KazooClient(hosts=config['sync']['zookeeper_connection_string'])
+    # NOTE: I think we need to keep the reference to the watcher
+    # to prevent it from being garbage collected
+    watcher = _sync(config, zk)
+    utils.run_asyncio()
+    sys.exit(0)
