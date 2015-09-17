@@ -1,4 +1,5 @@
 import sys
+import argparse
 
 import zgres._plugin
 import zgres.config
