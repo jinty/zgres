@@ -17,8 +17,8 @@ setup(name="zgres",
               'zgres-sync = zgres.sync:sync_cli',
               'zgres-deadman = zgres.deadman:deadman_cli',
               ],
-          'zgres.conn': [
-              'zgres-apply = zgres.apply:conn_info_plugin_factory',
+          'zgres.sync': [
+              'zgres-apply = zgres.apply:Plugin',
               ],
           },
       include_package_data = True,

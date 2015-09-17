@@ -115,14 +115,16 @@ def _apply(_prefix=_DEFAULT_PREFIX):
     failures = _run_hooks(hooks, cfg_dir)
     return failures
 
-def conn_info_plugin(state):
-    with open('/var/lib/zgres/config/databases.json.tmp', 'w') as f:
-        f.write(json.dumps(state, sort_keys=True))
-    os.rename('/var/lib/zgres/config/databases.json.tmp', '/var/lib/zgres/config/databases.json')
-    check_call('zgres-apply') # apply the configuration to the machine
+class Plugin:
 
-def conn_info_plugin_factory():
-    return conn_info_plugin
+    def __init__(self, config):
+        pass
+
+    def conn_info(self, state):
+        with open('/var/lib/zgres/config/databases.json.tmp', 'w') as f:
+            f.write(json.dumps(state, sort_keys=True))
+        os.rename('/var/lib/zgres/config/databases.json.tmp', '/var/lib/zgres/config/databases.json')
+        check_call('zgres-apply') # apply the configuration to the machine
 
 #
 # Command Line Scripts
