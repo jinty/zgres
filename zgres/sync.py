@@ -167,39 +167,42 @@ class DictWatch(Mapping):
             self._child_watchers[node] = self._watch_node(node)
 
 
-class PluginCaller:
-    """Glue between the DictWatcher and the plugins"""
+class ZooKeeperSource:
 
     _old_connection_info = None
 
-    def __init__(self, plugins):
-        self.plugins = plugins
+    def __init__(self, app):
+        self.app = app
+        self.zk = KazooClient(hosts=app.config['sync']['zookeeper_connection_string'])
+        self.watcher = DictWatch(self.zk, app.config['sync']['zookeeper_path'], self._call_plugins)
 
-    def __call__(self, state, key, from_val, to_val):
-        if self.plugins.state is not None:
+    def _call_plugins(self, state, key, from_val, to_val):
+        plugins = self.app.plugins
+        if plugins.state is not None:
             databases_with_state = state_to_databases(state, True)
-            self.plugins.state(databases_with_state)
-        if self.plugins.conn_info is not None:
+            plugins.state(databases_with_state)
+        if plugins.conn_info is not None:
             connection_info = state_to_databases(state, False)
             if self._old_connection_info == connection_info:
                 # Optimization: if the connection_info has not changed since the last event,
                 # don't call our plugins again
                 return
-            self.plugins.conn_info(connection_info)
+            plugins.conn_info(connection_info)
             self._old_connection_info = connection_info
 
 
-def _sync(config, zk):
-    """Synchronize local machine configuration with zookeeper.
+class SyncApp:
+    """Synchronize local machine configuration with the current postgresql state.
 
-    Connect to zookeeper and call our plugins with new state as it becomes available.
+    Call our plugins with new state as it becomes available from the source.
     """
-    plugins = zgres._plugin.get_plugins(config, 'sync', ['state', 'conn_info'], config, zk)
-    if plugins.state is None and plugins.conn_info is None:
-        raise Exception('No plugins configured for zgres-sync')
-    plugin_caller = PluginCaller(plugins)
-    watcher = DictWatch(zk, config['sync']['zookeeper_path'], plugin_caller)
-    return watcher
+
+    def __init__(self, config):
+        self.config = config
+        self.plugins = zgres._plugin.get_plugins(config, 'sync', ['state', 'conn_info'], config, self)
+        if self.plugins.state is None and self.plugins.conn_info is None:
+            raise Exception('No plugins configured for zgres-sync')
+        self.source = ZooKeeperSource(self)
 
 #
 # Command Line Scripts
@@ -219,9 +222,7 @@ info, that means appservers and probably database nodes if you use streaming
 replication.
 """)
     config = zgres.config.parse_args(parser, argv)
-    zk = KazooClient(hosts=config['sync']['zookeeper_connection_string'])
-    # NOTE: I think we need to keep the reference to the watcher
-    # to prevent it from being garbage collected
-    watcher = _sync(config, zk)
+    # Keep a reference to the App to prevent garbage collection
+    app = App(config)
     utils.run_asyncio()
     sys.exit(0)

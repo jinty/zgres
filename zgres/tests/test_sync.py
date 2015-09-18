@@ -23,17 +23,20 @@ async def test_functional(zk):
     """
     config = ConfigParser()
     config.read_dict({'sync': {
+        'zookeeper_connection_string': 'example.org:2181',
         'zookeeper_path': '/databases',
         'plugins': 'zgres-apply',
         }})
     zk.create("/databases")
     zk.create("/databases/clusterA_conn_10.0.0.2", json.dumps({"node": 1}).encode('utf-8'))
     with mock.patch('zgres.apply.Plugin') as Plugin:
-        watcher = sync._sync(config, zk)
+        with mock.patch('zgres.sync.KazooClient') as KazooClient:
+            KazooClient.return_value = zk
+            app = sync.SyncApp(config)
     zk.create("/databases/clusterA_conn_10.0.0.1", json.dumps({"node": 1}).encode('utf-8'))
     await asyncio.sleep(0.25)
     # did our state get updated?
-    assert dict(watcher) == {
+    assert dict(app.source.watcher) == {
             'clusterA_conn_10.0.0.1': {'node': 1},
             'clusterA_conn_10.0.0.2': {'node': 1},
             }
