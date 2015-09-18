@@ -29,11 +29,11 @@ async def test_functional(zk):
     zk.create("/databases")
     zk.create("/databases/clusterA_conn_10.0.0.2", json.dumps({"node": 1}).encode('utf-8'))
     with mock.patch('zgres.apply.Plugin') as Plugin:
-        state, watcher = sync._sync(config, zk)
+        watcher = sync._sync(config, zk)
     zk.create("/databases/clusterA_conn_10.0.0.1", json.dumps({"node": 1}).encode('utf-8'))
     await asyncio.sleep(0.25)
     # did our state get updated?
-    assert state == {
+    assert dict(watcher) == {
             'clusterA_conn_10.0.0.1': {'node': 1},
             'clusterA_conn_10.0.0.2': {'node': 1},
             }
