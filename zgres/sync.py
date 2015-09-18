@@ -208,8 +208,11 @@ def _sync(config, zk):
 def sync_cli(argv=sys.argv):
     parser = argparse.ArgumentParser(description="""Start synchronization daemon
 This daemon connects to zookeeper an watches for changes to the database config.
-It then writes the config out to /var/lib/zgres/databases.json whenever there is a change
-and calls zgres-apply.
+It then notifies it's plugins when the state changes.
+
+A built-in plugin is zgres-apply which writes the config out to
+/var/lib/zgres/databases.json whenever there is a change and calls zgres-apply
+to run arbitrary executables dropped into /var/lib/zgres/hooks.
 
 This daemon gets run on all machines which need to know the database connection
 info, that means appservers and probably database nodes if you use streaming
