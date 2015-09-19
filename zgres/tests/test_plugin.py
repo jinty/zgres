@@ -80,9 +80,9 @@ def test_get_event_handler():
     # Call the real event
     result = handler.event('hey')
     assert result == [
-        ('plugin1', None),
-        ('plugin2', 'hey-ho'),
-        ('plugin3', None),
+        None,
+        'hey-ho',
+        None,
         ]
     assert log == [
         ('plugin1', 'event', 'hey'),
@@ -92,9 +92,38 @@ def test_get_event_handler():
     log[:] = []
     # with non-returning events, the events are just called
     result = handler.other_event(1, 5)
-    assert result == [
-        ('plugin2', 6),
-        ]
+    assert result == [6]
     assert log == [
         ('plugin2', 'other_event', 1, 5),
         ]
+
+def test_get_event_handler_with_single_event():
+    # Test an "single" event. This is an event which can not have more than one handler
+    log = []
+    plugins = configure([
+            ('plugin2', Plugin2),
+            ], log)
+    handler = get_event_handler(plugins, [dict(name='event', type='single', required=True)])
+    # Call the real event
+    result = handler.event('hey')
+    assert result == 'hey-ho'
+    assert log == [
+        ('plugin2', 'event', 'hey'),
+        ]
+    # it is an error to configure no handlers for this event
+    plugins = configure([
+            ], log)
+    with pytest.raises(AssertionError) as exec:
+        handler = get_event_handler(plugins, [dict(name='event', type='single', required=True)])
+    # unless not required
+    plugins = configure([
+            ], log)
+    handler = get_event_handler(plugins, [dict(name='event', type='single', required=False)])
+    assert handler.event is None
+    # and more than one is allways an error
+    plugins = configure([
+            ('plugin1', Plugin1),
+            ('plugin2', Plugin2),
+            ], log)
+    with pytest.raises(AssertionError) as exec:
+        handler = get_event_handler(plugins, [dict(name='event', type='single', required=True)])

@@ -117,7 +117,7 @@ def _apply(_prefix=_DEFAULT_PREFIX):
 
 class Plugin:
 
-    def __init__(self, name, config, zk):
+    def __init__(self, name, app):
         pass
 
     def conn_info(self, state):

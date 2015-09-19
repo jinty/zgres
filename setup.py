@@ -19,6 +19,7 @@ setup(name="zgres",
               ],
           'zgres.sync': [
               'zgres-apply = zgres.apply:Plugin',
+              'zookeeper = zgres.zookeeper:ZooKeeperSource',
               ],
           },
       include_package_data = True,

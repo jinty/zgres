@@ -7,7 +7,6 @@ def load(config, section):
 
     Plugins are sorted by the order they are specified in the config file.
     """
-    assert not config[config.default_section], 'No default section allowed, sorry!'
     plugin_names = [c.strip() for c in config[section]['plugins'].split(',')]
     seen = set([])
     for i in plugin_names:
@@ -41,20 +40,44 @@ def _handlers_executor(handlers):
     if not handlers:
         return None
     def call(self, *args, **kw):
-        return [(plugin_name, h(*args, **kw)) for plugin_name, _, h in handlers]
+        return [h(*args, **kw) for _, _, h in handlers]
+    return call
+
+def _handlers_executor_single(handlers):
+    if not handlers:
+        return None
+    assert len(handlers) == 1
+    handler = handlers[0][2]
+    def call(self, *args, **kw):
+        return handler(*args, **kw)
     return call
 
 def get_event_handler(setup_plugins, events):
     class Handler:
-        pass
+        plugins = dict(setup_plugins)
     for event_name in events:
+        if isinstance(event_name, dict):
+            spec = event_name
+            event_name = spec.pop('name')
+        else:
+            spec = dict(type='multiple',
+                    required=False)
         handlers = []
         for name, plugin in setup_plugins:
             handler = getattr(plugin, event_name, None)
             if handler is None:
                 continue
             handlers.append((name, event_name, handler))
-        executor = _handlers_executor(handlers)
+        if spec['required'] and not handlers:
+            raise AssertionError('At least one plugin must implement {}'.format(event_name))
+        if spec['type'] == 'multiple':
+            executor = _handlers_executor(handlers)
+        elif spec['type'] == 'single':
+            if len(handlers) > 1:
+                raise AssertionError('Only one plugin can implement {}'.format(event_name))
+            executor = _handlers_executor_single(handlers)
+        else:
+            raise NotImplementedError('unknown event spec type')
         setattr(Handler, event_name, executor)
     return Handler()
 
