@@ -32,22 +32,17 @@ ZooKeeper Directory Layout
 --------------------------
 
 In ZooKeeper, we have one directory which contains the information on
-all the nodes in multiple master-replica database groups. It is a flat
-directory with 4 znode types:
+all the nodes in multiple master-replica database groups. It is a 
+directory with 3 sub-directories types:
 
-    config
-        Configuration of zgres for this path.
-        This is not created/modified by either the "sync" or "deadman"
-        daemon
-
-    state-{IPADDR}[:{PORT}]
+    /state/{DATABASE_GROUP_NAME}_{IPADDR}:{PORT}
         This contains all the information about a database cluster, healthy or
         not. It is updated frequently with data such as the WAL log
         replay status. It is an ephemeral node and will dissapear if
         the cluster goes down or the connection to zookeeper is lost.
         Ephemeral, created/maintained by the "deadman" daemon.
 
-    conn-{IPADDR}[:{PORT}]
+    /conn/{DATABASE_GROUP_NAME}_{IPADDR}:{PORT}
         This znode contains a subset of information from the state-
         node. It is the static connection information/metadata about a single
         healthy (i.e. connectable) cluster. If the node is not "healthy", this
@@ -55,17 +50,14 @@ directory with 4 znode types:
         is gaurenteed not to change over the lifespan of the znode.  Ephemeral,
         created/maintained by the "deadman" daemon.
 
-    master-{DATABASE_GROUP_NAME}
+    /master/{DATABASE_GROUP_NAME}
         This contains the IPADDR of the current master for the database
         group. Connection info should be looked up in the
-        healthy-{IPADDR} node (if it exists).
+        "_conn_" node (if it exists).
         Created/maintained by the "deadman" daemon on the current 
 
-Any applications connecting to this directory must ignore all znodes
-with a prefix they do not understand. All of the above znodes contain
-a JSON encoded dictionary/object/hashmap.
-
-PORT is optional, if there is none, 5432 is assumed.
+All of the above znodes contain a JSON encoded
+dictionary/object/hashmap.
 
 Sync Daemon
 -----------
