@@ -26,20 +26,20 @@ Terminology
 - znode: a ZooKeeper data node in the ZooKeeper database
 - cluster group or database group: A group of master/replica providing one logical
   database, made up of one or more database clusters.
-        
+
 
 ZooKeeper Directory Layout
 --------------------------
 
 In ZooKeeper, we have one directory which contains the information on
-all the nodes in multiple master-replica database groups. It is a 
-directory with 3 sub-directories types:
+all the nodes in multiple master-replica database groups. It is a
+directory with 4 sub-directories types:
 
     /state/{DATABASE_GROUP_NAME}_{IPADDR}:{PORT}
-        This contains all the information about a database cluster, healthy or
-        not. It is updated frequently with data such as the WAL log
+        This contains all the information about a database cluster nodes,
+        healthy or not. It is updated frequently with data such as the WAL log
         replay status. It is an ephemeral node and will dissapear if
-        the cluster goes down or the connection to zookeeper is lost.
+        the connection to zookeeper is lost.
         Ephemeral, created/maintained by the "deadman" daemon.
 
     /conn/{DATABASE_GROUP_NAME}_{IPADDR}:{PORT}
@@ -51,12 +51,15 @@ directory with 3 sub-directories types:
         created/maintained by the "deadman" daemon.
 
     /master/{DATABASE_GROUP_NAME}
-        This contains the IPADDR of the current master for the database
-        group. Connection info should be looked up in the
+        This contains the IPADDR:PORT of the current master for the
+        database group. Connection info should be looked up in the
         "_conn_" node (if it exists).
-        Created/maintained by the "deadman" daemon on the current 
+        Created/maintained by the "deadman" daemon on the current
 
-All of the above znodes contain a JSON encoded
+    /static/{DATABASE_GROUP_NAME}-db-id
+        Contains the database identifier of the database group.
+
+Most of the above znodes contain a JSON encoded
 dictionary/object/hashmap.
 
 Sync Daemon
@@ -95,7 +98,7 @@ zookeeper (creating/maintaining the state-, conn- and master-
 znodes). It must run on the same machine as the database cluster.
 
 It is responsible for promoting or shutting down it's postgresql
-database cluster. 
+database cluster.
 
 Currently, remastering and starting PostgreSQL should be handled outside
 before deadman is started.
