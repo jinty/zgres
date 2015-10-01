@@ -184,3 +184,41 @@ class ZooKeeperSource:
             app.conn_info(connection_info)
             self._old_connection_info = connection_info
 
+class ZooKeeperDeadmanPlugin:
+
+    def __init__(self, name, app):
+        self.app = app
+
+    def _db_id_path(self):
+        return self._path + 'static/' + self._group_name + '-db-id'
+
+    def _db_id_lock_path(self):
+        return self._path + 'static/' + self._group_name + '-db-id.lock'
+
+    def initialize(self):
+        self._zk = KazooClient(hosts=self.app.config['deadman']['zookeeper']['connection_string'])
+        self._path = KazooClient(hosts=self.app.config['deadman']['zookeeper']['path'])
+        if not self._path.endswith('/'):
+            self._path += '/'
+        self._group_name = KazooClient(hosts=self.app.config['deadman']['zookeeper']['group_name'])
+        assert '/' not in self._group_name
+
+    def dcs_set_database_identifier(self, database_id):
+        try:
+            self._zk.create(self._db_id_path(), database_id)
+        except kazoo.exceptions.NodeExistsError:
+            return False
+        return True
+
+    def dcs_get_database_identifier(self):
+        try:
+            return self._zk.get(self._db_id_path())
+        except kazoo.exceptions.NoNodeError:
+            return None
+
+    def dcs_get_database_identifier(self):
+        try:
+            self._zk.create(self._db_id_lock_path(), 'locked', ephemeral=True)
+        except kazoo.exceptions.NodeExistsError:
+            return False
+        return True

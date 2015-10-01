@@ -7,19 +7,77 @@ import zgres._plugin
 import zgres.config
 from zgres import utils
 
+_PLUGIN_API = [
+        # Run any initialization code plugins need. Allways called first. Return value ignored
+        dict(name='initialize',
+            required=False,
+            type='multiple'),
+
+        ######### Dealing with the Distributed Configuration system
+        # set the database identifier, return True if it can be set, false if not.
+        dict(name='dcs_set_database_identifier',
+            required=True,
+            type='multiple'),
+        dict(name='dcs_get_database_identifier',
+            required=True,
+            type='single'),
+        dict(name='dcs_lock_database_identifier',
+            required=True,
+            type='single'),
+
+        ######### Dealing with the local postgresql cluster
+        dict(name='postgresql_get_database_identifier',
+            required=True,
+            type='single'),
+        # stop postgresql if it is not already stopped
+        dict(name='postgresql_stop',
+            required=True,
+            type='multiple'),
+        # start postgresql if it is not already running
+        dict(name='postgresql_start',
+            required=True,
+            type='multiple'),
+        # create a new postgresql database
+        dict(name='postgresql_initdb',
+            required=True,
+            type='multiple'),
+        # create a backup and put it where replicas can get it
+        dict(name='postgresql_backup',
+            required=True,
+            type='multiple'),
+        ]
+
 class App:
 
-    state = {}
+    _trying_to_giveup = False
 
     def __init__(self, config):
+        self.health_problems = {}
         self.config = config
-        self._plugins = zgres._plugin.get_plugins(config, 'deadman', [
-            dict(name='postgresql_stop', required=True, type='multiple'),
-            dict(name='is_database_identifier_set', required=True, type='multiple'),
-            'initialize',
-            ], self)
+        self.tick_time = 1 # 1 second
+        self._setup_plugins()
+        self.logger = logging
 
-    def intialize(self):
+    def _setup_plugins(self):
+        self._plugins = zgres._plugin.get_plugins(
+                self.config,
+                'deadman',
+                _PLUGIN_API,
+                self)
+
+    def master_bootstrap(self):
+        # Bootstrap the master, make sure that the master can be
+        # backed up and started before we set the database id
+        self._plugins.postgresql_initdb()
+        if not self._plugins.dcs_lock_database_identifier():
+            self.restart(60)
+        self._plugins.postgresql_start()
+        database_id = self._plugins.postgresql_get_database_identifier()
+        self._plugins.postgresql_backup()
+        if self._plugins.dcs_set_database_identifier(database_id):
+            self.logger.info('Successfully bootstrapped master and set database identifier: {}'.format(database_id))
+
+    def initialize(self):
         """Initialize the application
 
         returns None if initialzation was successful
@@ -27,7 +85,7 @@ class App:
         """
         self.unhealthy('zgres.initialize', 'Initializing')
         self._plugins.initialize()
-        their_database_id = self._plugins.dcs_get_database_identifier():
+        their_database_id = self._plugins.dcs_get_database_identifier()
         if their_database_id is None:
             self.master_bootstrap()
             return 0
@@ -37,52 +95,81 @@ class App:
             return 0
         am_replica = self._plugins.postgresql_am_i_replica()
         if not am_replica:
-            master_locked = self.is_master_locked()
-            if maseter_locked:
-                # there is already another master, so we die...
+            if not self._plugins.lock_master():
                 self._plugins.postgresql_stop()
-                self._plugins.halt() # should irreperably stop the whole machine
+                if self.is_master_ahead():
+                    # there is already another master and it has moved ahead of us
+                    self._plugins.halt() # should irreperably stop postgresql from running again
+                                         # either stop the whole machine, move data directory
                 return 60
         self._plugins.postgresql_start()
         self._plugins.start_monitoring()
         zgres.healthy('zgres.initialize')
         return None
 
-    def slave_takeover(self):
-        # Some plugin (probably the DCS plugin) calls this to try take over from the master
-        locked = self._plugins.lock_master()
-        if locked:
-            self._plugins.postgresql_stop_replicating()
+    def master_locked(self, by_me):
+        self.master_lock = True
+        if by_me:
+            self._plugins.stop_replication()
 
-    def master_failover(self):
-        if not state:
+    def master_unlocked(self):
+        """Respond to an event where the master is unlocked"""
+        self.master_lock = False
+        loop.call_soon(self._handle_master_unlocked)
+
+    async def _handle_master_unlocked(self):
+        if self.master_lock:
             return
-        willing_replica = self._plugins.dcs_have_willing_replica()
-        if not willing_replica:
-            loop.call_later(60, self.master_failover())
-        else:
+        if not self._plugins.postgresql_am_i_replica():
+            # we are not a replica, and the master lock was lost. Let's wait a bit for
+            # another slave to takeover and then restart
             self._plugins.stop_postgresql()
-            self.dcs_remove_state_info()
-            self.dcs_unlock_master()
-            self.restart(120) # give the
+            self.restart(120)
+        while True:
+            # The master is missing and we should decide if we must take over
+            await loop.sleep(self.replication_update_interval * 3) # let replicas update their state
+            if self.master_lock:
+                return
+            if not self.am_i_best_replica():
+                await loop.sleep(self.replication_update_interval * 10)
+                continue
+            if self._plugins.lock_master():
+                # the "master_locked" event should stop replication now
+                return
 
     def unhealthy(self, key, reason):
         """Plugins call this if they want to declare the instance unhealthy"""
-        assert key not in self.health_state
-        self.health_state[key] = reason
-        if 'zgres.initialize' in self.health_state:
+        assert key not in self.health_problems
+        self.health_problems[key] = reason
+        if 'zgres.initialize' in self.health_problems:
             return
         logging.warn('I am unhelthy: ({}) {}'.format(key, reason))
         self.dcs_remove_conn_info()
-        if not self._plugins.postgresql_am_i_replica() or self._plugins.master_locked():
-            self.master_failover()
+        if not self._plugins.postgresql_am_i_replica():
+            loop.call_soon(self._handle_unhealthy_master)
+
+    async def _handle_unhealthy_master(self):
+        if self._trying_to_giveup:
+            return # already trying
+        self._trying_to_giveup = True
+        try:
+            while True:
+                if not self.health_problems:
+                    return # I became healthy again
+                if self._plugins.is_there_willing_replica():
+                    # fallover
+                    self._plugins.stop_postgresql()
+                    self.restart(120)
+                await loop.sleep(30)
+        finally:
+            self._trying_to_giveup = False
 
     def healthy(self, key):
         """Plugins call this if they want to declare the instance unhealthy"""
-        reason = self.health_state.pop(key)
+        reason = self.health_problems.pop(key)
         logging.warn('Stopped being unhealthy for this reason: ({}) {}'.format(key, reason))
-        if self.health_state:
-            logging.warn('I am still unhelthy for these reasons: {}'.format(self.health_state))
+        if self.health_problems:
+            logging.warn('I am still unhelthy for these reasons: {}'.format(self.health_problems))
         else:
             # YAY, we're healthy again
             if not self._plugins.postgresql_am_i_replica():
@@ -98,12 +185,15 @@ class App:
         app = App(Config)
         timeout = app.initialize()
         if timeout is None:
-            logging.info('Finished Initialization, starting to monitor. I am a {}'.format(self.health_state))
+            logging.info('Finished Initialization, starting to monitor. I am a {}'.format(self.health_problems))
             return
         app.restart(timeout)
 
     @classmethod
     def restart(self, timeout):
+        self.dcs_unlock_master()
+        self.dcs_remove_state_info()
+        self.dcs_remove_conn_info()
         logging.info('sleeping for {} seconds, then restarting'.format(timeout))
         time.sleep(timeout) # yes, this blocks everything. that's the point of it!
         sys.exit(0) # hopefully we get restarted immediately
