@@ -16,12 +16,13 @@ def load(config, section):
     plugins = {}
     available_plugins = []
     for i in iter_entry_points('zgres.' + section):
-        available_plugins.append(i.name)
-        if i.name in plugin_names:
-            if i.name in plugins:
+        absolute_name = i.dist.project_name + '#' + i.name
+        available_plugins.append(absolute_name)
+        if absolute_name in plugin_names:
+            if absolute_name in plugins:
                 raise Exception('Duplicate plugins for name {}, one was: {}'.format(i.name, plugin_factory))
             plugin_factory = i.load(require=False) #EEK never auto install ANYTHING
-            plugins[i.name] = plugin_factory
+            plugins[absolute_name] = plugin_factory
     not_seen = set(plugin_names) - set(plugins)
     if not_seen:
         raise Exception('Plugins were configured in the config file, but I could NOT find them: {}\n'

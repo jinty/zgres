@@ -22,7 +22,7 @@ async def test_functional(zk):
     others should be real unit tests.
     """
     config = {'sync': {
-        'plugins': 'zgres-apply,zookeeper',
+        'plugins': 'zgres#zgres-apply,zgres#zookeeper',
         'zookeeper': {
             'connection_string': 'example.org:2181',
             'path': '/databases',
@@ -37,7 +37,7 @@ async def test_functional(zk):
     zk.create("/databases/clusterA_conn_10.0.0.1", json.dumps({"node": 1}).encode('utf-8'))
     await asyncio.sleep(0.25)
     # did our state get updated?
-    assert dict(app._plugins.plugins['zookeeper'].watcher) == {
+    assert dict(app._plugins.plugins['zgres#zookeeper'].watcher) == {
             'clusterA_conn_10.0.0.1': {'node': 1},
             'clusterA_conn_10.0.0.2': {'node': 1},
             }
