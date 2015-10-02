@@ -24,6 +24,15 @@ _PLUGIN_API = [
         dict(name='dcs_lock_database_identifier',
             required=True,
             type='single'),
+        dict(name='dcs_lock_master',
+            required=True,
+            type='single'),
+        dict(name='dcs_get_master',
+            required=True,
+            type='single'),
+        dict(name='dcs_set_conn_info',
+            required=True,
+            type='multiple'),
 
         ######### Dealing with the local postgresql cluster
         dict(name='postgresql_get_database_identifier',
@@ -41,8 +50,20 @@ _PLUGIN_API = [
         dict(name='postgresql_initdb',
             required=True,
             type='multiple'),
+
         # create a backup and put it where replicas can get it
         dict(name='postgresql_backup',
+            required=True,
+            type='multiple'),
+        dict(name='postgresql_restore',
+            required=True,
+            type='multiple'),
+        dict(name='postgresql_am_i_replica',
+            required=True,
+            type='single'),
+
+        # monitoring
+        dict(name='start_monitoring',
             required=True,
             type='multiple'),
         ]
@@ -65,17 +86,23 @@ class App:
                 _PLUGIN_API,
                 self)
 
+    def replica_bootstrap(self):
+        self._plugins.postgresql_stop()
+        self._plugins.postgresql_restore()
+        return 0
+
     def master_bootstrap(self):
         # Bootstrap the master, make sure that the master can be
         # backed up and started before we set the database id
         self._plugins.postgresql_initdb()
-        if not self._plugins.dcs_lock_database_identifier():
-            self.restart(60)
         self._plugins.postgresql_start()
         database_id = self._plugins.postgresql_get_database_identifier()
+        if not self._plugins.dcs_lock_database_identifier():
+            return 60
         self._plugins.postgresql_backup()
         if self._plugins.dcs_set_database_identifier(database_id):
             self.logger.info('Successfully bootstrapped master and set database identifier: {}'.format(database_id))
+        return 0
 
     def initialize(self):
         """Initialize the application
@@ -83,19 +110,18 @@ class App:
         returns None if initialzation was successful
         or a number of seconds to wait before trying again to initialize
         """
+        self._loop = asyncio.get_event_loop()
         self.unhealthy('zgres.initialize', 'Initializing')
         self._plugins.initialize()
         their_database_id = self._plugins.dcs_get_database_identifier()
         if their_database_id is None:
-            self.master_bootstrap()
-            return 0
+            return self.master_bootstrap()
         my_database_id = self._plugins.postgresql_get_database_identifier()
         if my_database_id != their_database_id:
-            self.replica_bootstrap()
-            return 0
+            return self.replica_bootstrap()
         am_replica = self._plugins.postgresql_am_i_replica()
         if not am_replica:
-            if not self._plugins.lock_master():
+            if not self._plugins.dcs_lock_master():
                 self._plugins.postgresql_stop()
                 if self.is_master_ahead():
                     # there is already another master and it has moved ahead of us
@@ -104,18 +130,30 @@ class App:
                 return 60
         self._plugins.postgresql_start()
         self._plugins.start_monitoring()
-        zgres.healthy('zgres.initialize')
+        self.healthy('zgres.initialize')
+        if not am_replica and self.health_problems:
+            # I am an unhealthy master with the lock,
+            # This is a wierd situation becase another master should have taken over before
+            # we restarted and got the lock. let's check in a little while if we become healthy,
+            # else try failover again
+            self._loop.call_later(600, self._loop.create_task, self._handle_unhealthy_master())
         return None
 
     def master_locked(self, by_me):
         self.master_lock = True
         if by_me:
             self._plugins.stop_replication()
+        else:
+            if not self._plugins.postgresql_am_i_replica():
+                # a new master just appeared, it's not me
+                # I'm also a master, er so boom...
+                call.postgresql_stop()
+                self.restart(0)
 
     def master_unlocked(self):
         """Respond to an event where the master is unlocked"""
         self.master_lock = False
-        loop.call_soon(self._handle_master_unlocked)
+        self._loop.call_soon(self._handle_master_unlocked)
 
     async def _handle_master_unlocked(self):
         if self.master_lock:
@@ -133,7 +171,7 @@ class App:
             if not self.am_i_best_replica():
                 await loop.sleep(self.replication_update_interval * 10)
                 continue
-            if self._plugins.lock_master():
+            if self._plugins.dcs_lock_master():
                 # the "master_locked" event should stop replication now
                 return
 
@@ -146,16 +184,14 @@ class App:
         logging.warn('I am unhelthy: ({}) {}'.format(key, reason))
         self.dcs_remove_conn_info()
         if not self._plugins.postgresql_am_i_replica():
-            loop.call_soon(self._handle_unhealthy_master)
+            self._loop.call_soon(self._loop.create_task, self._handle_unhealthy_master())
 
     async def _handle_unhealthy_master(self):
         if self._trying_to_giveup:
             return # already trying
         self._trying_to_giveup = True
         try:
-            while True:
-                if not self.health_problems:
-                    return # I became healthy again
+            while self.health_problems:
                 if self._plugins.is_there_willing_replica():
                     # fallover
                     self._plugins.stop_postgresql()
@@ -173,11 +209,11 @@ class App:
         else:
             # YAY, we're healthy again
             if not self._plugins.postgresql_am_i_replica():
-                locked = self._plugins.lock_master()
+                locked = self._plugins.dcs_lock_master()
                 if not locked:
                     # for some reason we cannot lock the master, restart and try again
                     self.restart(60) # give the
-            self.dcs_set_conn_info()
+            self._plugins.dcs_set_conn_info()
 
     @classmethod
     def run(cls, config):

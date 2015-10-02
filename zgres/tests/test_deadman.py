@@ -33,14 +33,105 @@ def test_master_bootstrap(app):
             dcs_get_database_identifier=None,
             dcs_lock_database_identifier=True,
             postgresql_get_database_identifier='42')
-    assert app.initialize() == 0
+    timeout = app.initialize()
     assert app._plugins.mock_calls ==  [
             call.initialize(),
+            # check if we have a db identifier set
             call.dcs_get_database_identifier(),
+            # no, ok, init our db
             call.postgresql_initdb(),
-            call.dcs_lock_database_identifier(),
+            # make sure it starts
             call.postgresql_start(),
             call.postgresql_get_database_identifier(),
+            # lock the database identifier so no-one else gets here
+            call.dcs_lock_database_identifier(),
+            # Make the first backup while locked
             call.postgresql_backup(),
+            # set the database identifier
             call.dcs_set_database_identifier('42')
+            ]
+    # shut down cleanly and immediately
+    assert timeout == 0
+
+def test_master_boostrap_fails_to_lock_db_id(app):
+    app, plugins = app
+    setup_plugins(
+            plugins,
+            dcs_get_database_identifier=None,
+            dcs_lock_database_identifier=False,
+            postgresql_get_database_identifier='42')
+    timeout = app.initialize()
+    assert app._plugins.mock_calls ==  [
+            call.initialize(),
+            # check if we have a db identifier set
+            call.dcs_get_database_identifier(),
+            # no, ok, init our db
+            call.postgresql_initdb(),
+            # make sure it starts
+            call.postgresql_start(),
+            call.postgresql_get_database_identifier(),
+            # lock the database identifier so no-one else gets here
+            call.dcs_lock_database_identifier()
+            ]
+    # shut down cleanly and immediately
+    assert timeout == 60
+
+def test_replica_bootstrap(app):
+    app, plugins = app
+    setup_plugins(
+            plugins,
+            dcs_get_database_identifier='1234',
+            postgresql_get_database_identifier='42')
+    timeout = app.initialize()
+    assert app._plugins.mock_calls ==  [
+            call.initialize(),
+            # compare our id with the id in the DCS
+            call.dcs_get_database_identifier(),
+            call.postgresql_get_database_identifier(),
+            # make sure postgresql is stopped
+            call.postgresql_stop(),
+            # postgresql restore
+            call.postgresql_restore(),
+            ]
+    # shut down cleanly and immediately
+    assert timeout == 0
+
+def test_master_start(app):
+    app, plugins = app
+    setup_plugins(
+            plugins,
+            dcs_get_database_identifier='1234',
+            dcs_lock_master=True,
+            dcs_get_master=None,
+            postgresql_am_i_replica=False,
+            postgresql_get_database_identifier='1234')
+    def start_monitoring():
+        app.unhealthy('test_monitor', 'Waiting for first check')
+    plugins.start_monitoring.side_effect = start_monitoring
+    # sync startup
+    timeout = app.initialize()
+    assert plugins.mock_calls ==  [
+            call.initialize(),
+            # compare our id with the id in the DCS
+            call.dcs_get_database_identifier(),
+            call.postgresql_get_database_identifier(),
+            # check if I am a replica
+            call.postgresql_am_i_replica(),
+            # no, so check if there is a master
+            call.dcs_lock_master(),
+            # no master, so sure the DB is running
+            call.postgresql_start(),
+            # start monitoring
+            call.start_monitoring()
+            ]
+    # Carry on running afterwards
+    assert timeout == None
+    assert app.health_problems == {'test_monitor': 'Waiting for first check'}
+    # Our test monitor becomes healthy
+    plugins.reset_mock()
+    app.healthy('test_monitor')
+    assert plugins.mock_calls ==  [
+            call.postgresql_am_i_replica(),
+            call.dcs_lock_master(),
+            call.dcs_set_conn_info(),
             ]
