@@ -1,0 +1,15 @@
+[Unit]
+Description=Zgres Database Controller
+
+[Service]
+User=root
+PrivateTmp=true
+ProtectHome=read-only
+NoNewPrivileges=true
+PrivateDevices=true
+ExecStart=/usr/bin/zgres-deadman
+Restart=allways
+
+[Install]
+WantedBy=multi-user.target
+
