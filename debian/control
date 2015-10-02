@@ -4,6 +4,7 @@ Priority: extra
 Maintainer: Brian Sutherland <brian@vanguardistas.net>
 Build-Depends: debhelper, python3-all, python3-setuptools, dh-python, dh-systemd
 Standards-Version: 3.9.2
+X-Python3-Version: >= 3.5
 
 Package: python3-zgres
 Architecture: all
