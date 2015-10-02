@@ -5,5 +5,4 @@
 /.tox
 /eggs
 /develop-eggs
-/bin
 /.installed.cfg

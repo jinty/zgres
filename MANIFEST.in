@@ -1,5 +1,6 @@
 include version.py
-include translations.py
+include README.md
+include LICENSE
 include RELEASE-VERSION
 include debian/*
 include debian/source/*

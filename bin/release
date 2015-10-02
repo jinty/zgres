@@ -1,0 +1,74 @@
+#!/usr/bin/python
+import sys
+from subprocess import check_output, check_call
+
+def splitver(version):
+    major, minor = [int(i) for i in version.split('.')]
+    return major, minor
+
+def normailze_branch_name(b):
+    return b[2:]
+
+def get_release_branches():
+    branches = check_output('git branch --no-color'.split(' '))
+    branches = [b for b in branches.split('\n') if b]
+    current_branch = None
+    for b in branches:
+        if b.startswith('* '):
+            assert current_branch is None
+            current_branch = b
+    current_branch = normailze_branch_name(current_branch)
+    branches = [normailze_branch_name(b) for b in branches]
+    branches = [int(b) for b in branches if b.isdigit()]
+    branches.sort()
+    return current_branch, branches
+
+def get_releases():
+    tags = check_output(['git', 'tag', '-l', 'release/*'])
+    return [t[8:] for t in tags.split()]
+
+current_branch, branches = get_release_branches()
+
+if current_branch == 'master':
+    if branches:
+        to_release_major = branches[-1] + 1
+    else:
+        to_release_major = 0
+else:
+    to_release_major = int(current_branch) # must be a release branch
+    assert to_release_major in branches
+
+tags = get_releases()
+to_release_minor = 0
+for t in tags:
+    major, minor = splitver(t)
+    if major == to_release_major:
+        to_release_minor = max(minor, to_release_minor)
+to_release_minor += 1
+
+relver = '{}.{}'.format(to_release_major, to_release_minor)
+
+last_release = check_output(['git', 'describe', '--abbrev=0', '--match', 'release/*']).strip()
+changelog = check_output(['git', 'log', '{}..HEAD'.format(last_release)])
+changelog = ['    ' + c for c in changelog.splitlines()]
+changelog.insert(0, 'Releasing {} with these changes since {}:'.format(relver, last_release))
+changelog.append('')
+changelog = '\n'.join(changelog) 
+print changelog
+
+s = 'X'
+while s not in 'yn':
+    s = raw_input('Are you sure: (y/N) ->')
+    if not s:
+        s = 'n'
+    s = s.lower()
+if s == 'y':
+    changes = 'changes/{}.md'.format(relver)
+    with open(changes, 'w') as f:
+        f.write(changelog)
+
+    check_call(['git', 'add', changes])
+    msg = 'releasing {} from {}'.format(relver, current_branch)
+    check_call(['git', 'commit', '-m', msg])
+    check_call(['git', 'tag', '-a', '-m', msg, 'release/{}'.format(relver)])
+    check_call(['git', 'push', '--follow-tags', 'upstream'])

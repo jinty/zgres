@@ -1,0 +1,23 @@
+#!/usr/bin/python3
+
+import os
+import sys
+from subprocess import check_call, check_output
+
+check_call(['python', 'setup.py', 'sdist'])
+version = open('RELEASE-VERSION', 'r').read().strip()
+pkg = 'zgres'
+
+os.chdir('dist')
+
+v_parts = version.split('.')
+if len(v_parts) == 2 and v_parts[0].isdigit() and v_parts[1].isdigit():
+    print('Building release {}'.format(version))
+    check_call(['tar', '-xzf', '{}-{}.tar.gz'.format(pkg, version)])
+    os.chdir('{}-{}'.format(pkg, version))
+    check_call(['dch', '-v',  version, '--distribution', sys.argv[1], '--force-distribution', 'Release {}'.format(version)])
+    check_call(['dpkg-buildpackage'])
+    arch = check_output(['dpkg', '--print-architecture'])
+    arch = arch.decode('ascii').strip()
+    check_call(['dput', '../{}_{}_{}.changes'.format(pkg, version, arch)])
+

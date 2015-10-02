@@ -1,13 +1,10 @@
 import os
+import version
 from setuptools import setup, find_packages
 
-with open('debian/changelog') as f:
-    _, version = f.read().splitlines()[0].split('(', 1)
-    version, _ = version.split(')', 1)
-    version = version.strip()
 
 setup(name="zgres",
-      version=version,
+      version=version.getVersion(),
       packages=find_packages(),
       install_requires=['kazoo'],
       description="Database Connection and failover manager for PostgreSQL",
