@@ -1,4 +1,5 @@
 import sys
+import uuid
 import asyncio
 import logging
 import argparse
@@ -12,6 +13,10 @@ _PLUGIN_API = [
         dict(name='initialize',
             required=False,
             type='multiple'),
+        # Get the id of this postgresql cluster
+        dict(name='get_my_id',
+            required=False,
+            type='single'),
 
         ######### Dealing with the Distributed Configuration system
         # set the database identifier, return True if it can be set, false if not.
@@ -21,13 +26,13 @@ _PLUGIN_API = [
         dict(name='dcs_get_database_identifier',
             required=True,
             type='single'),
-        dict(name='dcs_lock_database_identifier',
+        dict(name='dcs_lock',
             required=True,
             type='single'),
-        dict(name='dcs_lock_master',
+        dict(name='dcs_unlock',
             required=True,
-            type='single'),
-        dict(name='dcs_get_master',
+            type='multiple'),
+        dict(name='dcs_get_lock_owner',
             required=True,
             type='single'),
         dict(name='dcs_set_conn_info',
@@ -74,6 +79,8 @@ class App:
 
     def __init__(self, config):
         self.health_problems = {}
+        self._conn_info = {}
+        self._state_info = {}
         self.config = config
         self.tick_time = 1 # 1 second
         self._setup_plugins()
@@ -97,7 +104,7 @@ class App:
         self._plugins.postgresql_initdb()
         self._plugins.postgresql_start()
         database_id = self._plugins.postgresql_get_database_identifier()
-        if not self._plugins.dcs_lock_database_identifier():
+        if not self._plugins.dcs_lock('database_identifier'):
             return 60
         self._plugins.postgresql_backup()
         if self._plugins.dcs_set_database_identifier(database_id):
@@ -113,6 +120,10 @@ class App:
         self._loop = asyncio.get_event_loop()
         self.unhealthy('zgres.initialize', 'Initializing')
         self._plugins.initialize()
+        if self._plugins.get_my_id:
+            self.my_id = self._plugins.get_my_id()
+        else:
+            self.my_id = str(uuid.uuid1())
         their_database_id = self._plugins.dcs_get_database_identifier()
         if their_database_id is None:
             return self.master_bootstrap()
@@ -121,7 +132,7 @@ class App:
             return self.replica_bootstrap()
         am_replica = self._plugins.postgresql_am_i_replica()
         if not am_replica:
-            if not self._plugins.dcs_lock_master():
+            if not self._plugins.dcs_lock('master'):
                 self._plugins.postgresql_stop()
                 if self.is_master_ahead():
                     # there is already another master and it has moved ahead of us
@@ -209,11 +220,11 @@ class App:
         else:
             # YAY, we're healthy again
             if not self._plugins.postgresql_am_i_replica():
-                locked = self._plugins.dcs_lock_master()
+                locked = self._plugins.dcs_lock('master')
                 if not locked:
                     # for some reason we cannot lock the master, restart and try again
                     self.restart(60) # give the
-            self._plugins.dcs_set_conn_info()
+            self._plugins.dcs_set_conn_info(self._conn_info)
 
     @classmethod
     def run(cls, config):
@@ -227,7 +238,7 @@ class App:
 
     @classmethod
     def restart(self, timeout):
-        self.dcs_unlock_master()
+        self.dcs_unlock('master')
         self.dcs_remove_state_info()
         self.dcs_remove_conn_info()
         logging.info('sleeping for {} seconds, then restarting'.format(timeout))

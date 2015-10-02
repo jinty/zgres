@@ -189,11 +189,16 @@ class ZooKeeperDeadmanPlugin:
     def __init__(self, name, app):
         self.app = app
 
-    def _db_id_path(self):
-        return self._path + 'static/' + self._group_name + '-db-id'
+    def _path(self, type, name=None):
+        if name is None:
+            name = self.app.my_id
+        return self._path + type + '/' + self._group_name + '-' + name
 
-    def _db_id_lock_path(self):
-        return self._path + 'static/' + self._group_name + '-db-id.lock'
+    def _db_id_path(self):
+        return self._path('static', 'db-id')
+
+    def _lock_path(self, name):
+        return self._path('lock', name)
 
     def initialize(self):
         self._zk = KazooClient(hosts=self.app.config['deadman']['zookeeper']['connection_string'])
@@ -216,9 +221,22 @@ class ZooKeeperDeadmanPlugin:
         except kazoo.exceptions.NoNodeError:
             return None
 
-    def dcs_get_database_identifier(self):
+    def dcs_lock(self, name):
         try:
-            self._zk.create(self._db_id_lock_path(), 'locked', ephemeral=True)
+            self._zk.create(self._lock_path(name), self.app.my_id, ephemeral=True)
         except kazoo.exceptions.NodeExistsError:
             return False
         return True
+
+    def dcs_unlock(self, name):
+        zk.delete(self._lock_path(name))
+
+    def dcs_get_lock_owner(self, name):
+        try:
+            return self._zk.get(self._lock_path(name))
+        except kazoo.exceptions.NoNodeError:
+            return None
+
+    def dcs_set_conn_info(self, data):
+        data = json.dumps(data)
+        return self._zk.create(self._path('conn'), data, ephemeral=True)

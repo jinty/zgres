@@ -1,5 +1,6 @@
 import os
-from subprocess import check_output
+import logging
+from subprocess import check_output, call
 
 from . import systemd
 
@@ -13,6 +14,8 @@ class AptPostgresqlPlugin:
         self.app = app
         self._version = self.app.config['sync']['apt']['postgresql_version']
         self._cluster_name = self.app.config['sync']['apt']['postgresql_cluster_name']
+        self._health_check_key = (name, 'systemd')
+        self.logger = logging.getLogger(name)
 
     def _config_file(self):
         return '/etc/postgresql/{}/{}/postgresql.conf'.format(self._version, self._cluster_name)
@@ -47,3 +50,22 @@ class AptPostgresqlPlugin:
         if os.path.exists(self._config_file()):
             check_call(['pg_dropcluster', '--stop', self._version, self._cluster_name])
         check_call(['pg_createcluster', self._version, self._cluster_name])
+
+    def start_monitoring(self):
+        self.app.unhealthy(self._health_check_key, 'Waiting for first systemd check')
+        loop = asyncio.get_event_loop()
+        loop.call_soon(self._loop.create_task, self._monitor_systemd)
+
+    async def monitor_systemd(self):
+        loop = asyncio.get_event_loop()
+        while True:
+            await loop.sleep(1)
+            status = call(['systemctl', 'is-active', self._service()])
+            healthy = self._health_check_key in self.app.health_problems
+            if not healthy and status == 0:
+                self.app.healthy(self._health_check_key)
+            elif healthy and status != 0:
+                self.app.unhealthy(elf._health_check_key, 'inactive according to systemd')
+
+
+
