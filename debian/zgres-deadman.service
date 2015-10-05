@@ -8,7 +8,7 @@ ProtectHome=read-only
 NoNewPrivileges=true
 PrivateDevices=true
 ExecStart=/usr/bin/zgres-deadman
-Restart=allways
+Restart=always
 
 [Install]
 WantedBy=multi-user.target
