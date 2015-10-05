@@ -24,7 +24,7 @@ Terminology
 - database cluster or cluster:
   http://www.postgresql.org/docs/9.4/static/creating-cluster.html
 - znode: a ZooKeeper data node in the ZooKeeper database
-- cluster group or database group: A group of master/replica providing one logical
+- group, cluster group, database group: A group of master/replica providing one logical
   database, made up of one or more database clusters.
 
 

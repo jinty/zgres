@@ -1,2 +1,3 @@
+etc/zgres/zgres.ini.d
 var/lib/zgres/hooks
 var/lib/zgres/config
