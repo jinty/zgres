@@ -228,7 +228,7 @@ class App:
     @classmethod
     def run(cls, config):
         logging.info('Starting')
-        app = App(Config)
+        app = App(config)
         timeout = app.initialize()
         if timeout is None:
             logging.info('Finished Initialization, starting to monitor. I am a {}'.format(self.health_problems))
