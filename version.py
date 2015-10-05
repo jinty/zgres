@@ -118,3 +118,6 @@ def getVersion():
     if version != release_version:
         writeReleaseVersion(version)
     return version
+
+if __name__ == '__main__':
+    print(getVersion())
