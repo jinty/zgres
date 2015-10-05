@@ -7,7 +7,7 @@ def load(config, section):
 
     Plugins are sorted by the order they are specified in the config file.
     """
-    plugin_names = [c.strip() for c in config[section]['plugins'].split(',')]
+    plugin_names = [c.strip() for c in config[section].get('plugins', '').split(',') if c.strip()]
     seen = set([])
     for i in plugin_names:
         if i in seen:

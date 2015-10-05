@@ -29,6 +29,15 @@ class Plugin2:
         self.log.append((self.name, 'other_event', arg1, arg2))
         return arg1 + arg2
 
+def test_no_plugin_config():
+    config = ConfigParser()
+    config.read_dict({
+        'sync': {
+            }})
+    plugins = load(config, 'sync')
+    from zgres.apply import Plugin
+    assert plugins == []
+
 def test_real_plugins():
     config = ConfigParser()
     config.read_dict({
