@@ -12,8 +12,8 @@ class AptPostgresqlPlugin:
 
     def __init__(self, name, app):
         self.app = app
-        self._version = self.app.config['sync']['apt']['postgresql_version']
-        self._cluster_name = self.app.config['sync']['apt']['postgresql_cluster_name']
+        self._version = self.app.config['apt']['postgresql_version']
+        self._cluster_name = self.app.config['apt']['postgresql_cluster_name']
         self._health_check_key = (name, 'systemd')
         self.logger = logging.getLogger(name)
 
@@ -66,6 +66,3 @@ class AptPostgresqlPlugin:
                 self.app.healthy(self._health_check_key)
             elif healthy and status != 0:
                 self.app.unhealthy(elf._health_check_key, 'inactive according to systemd')
-
-
-
