@@ -99,7 +99,8 @@ def test_replica_bootstrap(app):
     # shut down cleanly and immediately
     assert timeout == 0
 
-def test_master_start(app):
+@pytest.mark.asyncio
+async def test_master_start(app):
     app, plugins = app
     setup_plugins(
             plugins,

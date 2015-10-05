@@ -1,4 +1,6 @@
 import os
+import asyncio
+from asyncio import sleep
 import logging
 from subprocess import check_output, call
 
@@ -12,10 +14,16 @@ class AptPostgresqlPlugin:
 
     def __init__(self, name, app):
         self.app = app
-        self._version = self.app.config['apt']['postgresql_version']
-        self._cluster_name = self.app.config['apt']['postgresql_cluster_name']
         self._health_check_key = (name, 'systemd')
         self.logger = logging.getLogger(name)
+
+    @property
+    def _version(self):
+        return self.app.config['apt']['postgresql_version']
+
+    @property
+    def _cluster_name(self):
+        return self.app.config['apt']['postgresql_cluster_name']
 
     def _config_file(self):
         return '/etc/postgresql/{}/{}/postgresql.conf'.format(self._version, self._cluster_name)
@@ -54,15 +62,17 @@ class AptPostgresqlPlugin:
     def start_monitoring(self):
         self.app.unhealthy(self._health_check_key, 'Waiting for first systemd check')
         loop = asyncio.get_event_loop()
-        loop.call_soon(self._loop.create_task, self._monitor_systemd)
+        loop.call_soon(loop.create_task, self._monitor_systemd())
 
-    async def monitor_systemd(self):
+    async def _monitor_systemd(self):
         loop = asyncio.get_event_loop()
         while True:
-            await loop.sleep(1)
+            await sleep(1)
             status = call(['systemctl', 'is-active', self._service()])
-            healthy = self._health_check_key in self.app.health_problems
-            if not healthy and status == 0:
+            if status == 0:
                 self.app.healthy(self._health_check_key)
-            elif healthy and status != 0:
-                self.app.unhealthy(elf._health_check_key, 'inactive according to systemd')
+            else:
+                await sleep(2)
+                status = call(['systemctl', 'is-active', self._service()])
+                if status != 0:
+                    self.app.unhealthy(self._health_check_key, 'inactive according to systemd')

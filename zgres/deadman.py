@@ -188,7 +188,6 @@ class App:
 
     def unhealthy(self, key, reason):
         """Plugins call this if they want to declare the instance unhealthy"""
-        assert key not in self.health_problems
         self.health_problems[key] = reason
         if 'zgres.initialize' in self.health_problems:
             return
