@@ -4,19 +4,25 @@ import logging
 import configparser
 
 def _add_common_args(parser):
-    parser.add_argument('-c', '--config-file',
-            dest='config_file',
-            default='/etc/zgres/zgres.ini',
-            help='Use this config file')
+    parser.add_argument('-c', '--config',
+            dest='config',
+            nargs='*',
+            default=['/etc/zgres/zgres.ini', '/etc/zgres/zgres.ini.d'],
+            help='Use this config file or directory. If a directory, all files ending with .ini are parsed. Order is important with latter files over-riding earlier ones.')
 
 def _setup_logging(config):
     logging.basicConfig(level=logging.WARN)
 
 def _get_config(args):
     config = configparser.ConfigParser()
-    if not os.path.exists(args.config_file):
-        raise AssertionError('Config file {} does not exist'.format(args.config_file))
-    config.read(args.config_file)
+    for file_or_dir in args.config:
+        if os.path.isfile(file_or_dir):
+            config.read_file(open(file_or_dir, 'r'))
+        else:
+            for cfg in sorted(os.listdir(file_or_dir)):
+                if cfg.startswith('.') or not cfg.endswith('.ini'):
+                    continue
+                config.read_file(open(os.path.join(file_or_dir, cfg), 'r'))
     return config
 
 def parse_args(parser, argv):
