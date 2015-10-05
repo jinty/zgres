@@ -3,6 +3,7 @@ import asyncio
 import logging
 
 def exception_handler(loop, context):
+    loop.default_exception_handler(context)
     logging.error('Unexpected exception, exiting...')
     # XXX: do we need to log the exception here?
     sys.exit(1)
