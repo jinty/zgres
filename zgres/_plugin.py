@@ -53,7 +53,8 @@ def _handlers_executor_single(handlers):
         return handler(*args, **kw)
     return call
 
-def get_event_handler(setup_plugins, events):
+def get_event_handler(setup_plugins, events, logger=logging):
+    logger.info('Loading Plugins')
     class Handler:
         plugins = dict(setup_plugins)
     for event_name in events:
@@ -69,6 +70,7 @@ def get_event_handler(setup_plugins, events):
             if handler is None:
                 continue
             handlers.append((name, event_name, handler))
+        logger.info("loading event subscribers for {}: {}".format(event_name, ','.join([name for name, _, _ in handlers])))
         if spec['required'] and not handlers:
             raise AssertionError('At least one plugin must implement {}'.format(event_name))
         if spec['type'] == 'multiple':
