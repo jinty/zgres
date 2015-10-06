@@ -1,4 +1,4 @@
-import asyncio
+mport asyncio
 import boto
 import boto.utils
 
@@ -12,6 +12,9 @@ def _integer_wal_pos(pos):
 class Ec2SnapshotBackupPlugin:
 
     _backing_up = asyncio.Lock()
+
+    def __init__(self, name, app):
+        self.app = app
 
     def initialize(self):
         metadata = boto.utils.get_instance_metadata()
