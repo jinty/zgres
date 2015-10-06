@@ -29,7 +29,7 @@ class Ec2SnapshotBackupPlugin:
             devices.setdefault(device_no, {})[key] = v.strip()
         devices = [d[1] for d in sorted(devices.items())]
         self._devices = [d['device'] for d in devices]
-        delf._device_options = devices
+        self._device_options = devices
 
     def _conn(self):
         return boto.ec2.connect_to_region(self._region)
