@@ -75,7 +75,7 @@ _PLUGIN_API = [
 
 class App:
 
-    _trying_to_giveup = False
+    _giveup_lock = asyncio.Lock()
 
     def __init__(self, config):
         self.health_problems = {}
@@ -197,18 +197,15 @@ class App:
             self._loop.call_soon(self._loop.create_task, self._handle_unhealthy_master())
 
     async def _handle_unhealthy_master(self):
-        if self._trying_to_giveup:
+        if self._giveup_lock.locked():
             return # already trying
-        self._trying_to_giveup = True
-        try:
+        async with self._giveup_lock:
             while self.health_problems:
                 if self._plugins.is_there_willing_replica():
                     # fallover
                     self._plugins.stop_postgresql()
                     self.restart(120)
                 await loop.sleep(30)
-        finally:
-            self._trying_to_giveup = False
 
     def healthy(self, key):
         """Plugins call this if they want to declare the instance unhealthy"""
