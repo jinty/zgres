@@ -202,7 +202,7 @@ class ZooKeeperDeadmanPlugin:
 
     def initialize(self):
         self._zk = KazooClient(hosts=self.app.config['zookeeper']['connection_string'])
-        self._path = KazooClient(hosts=self.app.config['zookeeper']['path'])
+        self._path = self.app.config['zookeeper']['path']
         if not self._path.endswith('/'):
             self._path += '/'
         self._group_name = KazooClient(hosts=self.app.config['deadman']['group'])
