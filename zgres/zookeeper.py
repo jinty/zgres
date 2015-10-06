@@ -193,7 +193,7 @@ class ZooKeeperDeadmanPlugin:
     def _path(self, type, name=None):
         if name is None:
             name = self.app.my_id
-        return self._path + type + '/' + self._group_name + '-' + name
+        return self._path_prefix + type + '/' + self._group_name + '-' + name
 
     def _db_id_path(self):
         return self._path('static', 'db-id')
@@ -203,9 +203,9 @@ class ZooKeeperDeadmanPlugin:
 
     def initialize(self):
         self._zk = KazooClient(hosts=self.app.config['zookeeper']['connection_string'])
-        self._path = self.app.config['zookeeper']['path'].strip()
-        if not self._path.endswith('/'):
-            self._path += '/'
+        self._path_prefix = self.app.config['zookeeper']['path'].strip()
+        if not self._path_prefix.endswith('/'):
+            self._path_prefix += '/'
         self._group_name = self.app.config['deadman']['group'].strip()
         assert '/' not in self._group_name
 
