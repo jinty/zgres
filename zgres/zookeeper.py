@@ -202,10 +202,10 @@ class ZooKeeperDeadmanPlugin:
 
     def initialize(self):
         self._zk = KazooClient(hosts=self.app.config['zookeeper']['connection_string'])
-        self._path = self.app.config['zookeeper']['path']
+        self._path = self.app.config['zookeeper']['path'].strip()
         if not self._path.endswith('/'):
             self._path += '/'
-        self._group_name = KazooClient(hosts=self.app.config['deadman']['group'])
+        self._group_name = self.app.config['deadman']['group'].strip()
         assert '/' not in self._group_name
 
     def dcs_set_database_identifier(self, database_id):
