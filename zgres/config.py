@@ -1,7 +1,13 @@
 """Zgres config file"""
 import os
+import sys
 import logging
 import configparser
+
+class StdOutFilter(logging.Filter):
+
+    def filter(self, record):
+        return record.levelno < logging.WARNING
 
 def _add_common_args(parser):
     parser.add_argument('-c', '--config',
@@ -11,9 +17,15 @@ def _add_common_args(parser):
             help='Use this config file or directory. If a directory, all files ending with .ini are parsed. Order is important with latter files over-riding earlier ones.')
 
 def _setup_logging(config):
-    # TODO: send INFO and maybe DEBUG to stdout
-    # ERROR and WARN to stderr
-    logging.basicConfig(level=logging.INFO)
+    root_logger = logging.getLogger()
+    # less than WARN to stderr
+    stdout = logging.StreamHandler(sys.stdout)
+    stdout.addFilter(StdOutFilter())
+    root_logger.addHandler(stdout)
+    # WARN and above to stderr
+    stderr = logging.StreamHandler(sys.stderr)
+    stderr.setLevel(logging.WARNING)
+    root_logger.addHandler(stderr)
 
 def _get_config(args):
     config = configparser.ConfigParser()
