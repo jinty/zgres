@@ -41,6 +41,7 @@ class AptPostgresqlPlugin:
         data = check_output([
             '/usr/lib/postgresql/{}/bin/pg_controldata'.format(self._version),
             self._data_dir()])
+        data = data.decode('latin-1') # I don't care, don't fail, the data I am interested in is ascii
         for line in data.splitlines():
             if line.startswith('Data page checksum version:'):
                 _, dbid = line.split(':', 1)
