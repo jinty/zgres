@@ -194,7 +194,8 @@ class ZooKeeperDeadmanPlugin:
     def _path(self, type, name=None):
         if name is None:
             name = self.app.my_id
-        return self._path_prefix + type + '/' + self._group_name + '-' + name
+        path = self._path_prefix + type + '/' + self._group_name + '-' + name
+        return path.encode('utf-8')
 
     def _db_id_path(self):
         return self._path('static', 'db-id')
