@@ -24,22 +24,33 @@ def test_database_identifier(plugin):
     pluginB = plugin()
     assert pluginB.dcs_set_database_identifier('49') == False
     assert pluginB.dcs_get_database_identifier() == '42'
+    # database_identifiers are persistent
+    pluginA._disconnect()
+    assert pluginB.dcs_get_database_identifier() == '42'
 
 def test_locks(plugin):
     pluginA = plugin()
     pluginA.app.my_id = 'A'
     pluginB = plugin()
     pluginB.app.my_id = 'B'
+    # locks are empty by default
+    assert pluginB.dcs_get_lock_owner('mylock') is None
+    # if one plugin takes one, no others can
     assert pluginA.dcs_lock('mylock') == True
     assert pluginB.dcs_lock('mylock') == False
     assert pluginB.dcs_lock('yourlock') == True
     assert pluginA.dcs_lock('yourlock') == False
+    # we can see the owner of the lock
     assert pluginB.dcs_get_lock_owner('mylock') == 'A'
     assert pluginA.dcs_get_lock_owner('mylock') == 'A'
     assert pluginB.dcs_get_lock_owner('yourlock') == 'B'
     assert pluginA.dcs_get_lock_owner('yourlock') == 'B'
+    # and we can unlock them
     pluginA.dcs_unlock('mylock')
     assert pluginB.dcs_lock('mylock') == True
     assert pluginA.dcs_lock('mylock') == False
     assert pluginB.dcs_get_lock_owner('mylock') == 'B'
     assert pluginA.dcs_get_lock_owner('mylock') == 'B'
+    # locks are not persistent
+    pluginB._disconnect()
+    assert pluginA.dcs_get_lock_owner('mylock') is None

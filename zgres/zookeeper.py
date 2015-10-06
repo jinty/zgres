@@ -246,3 +246,8 @@ class ZooKeeperDeadmanPlugin:
     def dcs_set_conn_info(self, data):
         data = json.dumps(data)
         return self._zk.create(self._path('conn'), data, ephemeral=True)
+
+    def _disconnect(self):
+        # for testing only
+        self._zk.stop()
+
