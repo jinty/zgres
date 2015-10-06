@@ -59,6 +59,9 @@ class AptPostgresqlPlugin:
             check_call(['pg_dropcluster', '--stop', self._version, self._cluster_name])
         check_call(['pg_createcluster', self._version, self._cluster_name])
 
+    def postgresql_am_i_replica(self):
+        return os.path.exists(os.path.join(self._data_dir(), 'recovery.conf'))
+
     def start_monitoring(self):
         self.app.unhealthy(self._health_check_key, 'Waiting for first systemd check')
         loop = asyncio.get_event_loop()
