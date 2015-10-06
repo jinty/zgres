@@ -1,5 +1,6 @@
 import asyncio
 import boto
+import boto.ec2
 import boto.utils
 
 from subprocess import check_call
