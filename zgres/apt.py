@@ -2,7 +2,7 @@ import os
 import asyncio
 from asyncio import sleep
 import logging
-from subprocess import check_output, call
+from subprocess import check_output, call, check_call
 
 from . import systemd
 
