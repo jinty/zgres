@@ -46,17 +46,25 @@ async def test_functional():
 
 @pytest.fixture
 def deadman_plugin():
-    app = mock.Mock()
-    app.config = dict(
-            zookeeper=dict(
-                connection_string='localhost:1234',
-                path='/mypath',
-                group='mygroup',
-                ))
-    from zake.fake_client import FakeClient
-    from ..zookeeper import ZooKeeperDeadmanPlugin
-    plugin = ZooKeeperDeadmanPlugin('zgres#zookeeper', app)
-    with mock.patch('zgres.zookeeper.KazooClient') as KazooClient:
-        KazooClient.return_value = FakeClient()
-        plugin.initialize()
-    return plugin
+    storage = None
+    def factory():
+        nonlocal storage
+        app = mock.Mock()
+        app.config = dict(
+                zookeeper=dict(
+                    connection_string='localhost:1234',
+                    path='/mypath',
+                    group='mygroup',
+                    ))
+        from zake.fake_client import FakeClient
+        from ..zookeeper import ZooKeeperDeadmanPlugin
+        plugin = ZooKeeperDeadmanPlugin('zgres#zookeeper', app)
+        zk = FakeClient(storage=storage)
+        if storage is None:
+            # all plugins created by this factory SHARE a storage
+            storage = zk.storage
+        with mock.patch('zgres.zookeeper.KazooClient') as KazooClient:
+            KazooClient.return_value = zk
+            plugin.initialize()
+        return plugin
+    return factory
