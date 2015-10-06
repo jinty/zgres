@@ -169,6 +169,7 @@ class ZooKeeperSource:
 
     def start_watching(self):
         self.zk = KazooClient(hosts=self.app.config['sync']['zookeeper']['connection_string'])
+        self.zk.start()
         self.watcher = DictWatch(self.zk, self.app.config['sync']['zookeeper']['path'], self._notify_app_of_changes)
 
     def _notify_app_of_changes(self, state, key, from_val, to_val):
@@ -203,6 +204,7 @@ class ZooKeeperDeadmanPlugin:
 
     def initialize(self):
         self._zk = KazooClient(hosts=self.app.config['zookeeper']['connection_string'])
+        self._zk.start()
         self._path_prefix = self.app.config['zookeeper']['path'].strip()
         if not self._path_prefix.endswith('/'):
             self._path_prefix += '/'

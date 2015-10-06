@@ -10,9 +10,7 @@ from zake.fake_client import FakeClient
 
 @pytest.fixture
 def zk():
-    zk =  FakeClient()
-    zk.start()
-    return zk
+    return FakeClient()
 
 @pytest.mark.asyncio
 async def test_functional(zk):
@@ -28,8 +26,10 @@ async def test_functional(zk):
             'path': '/databases',
             }
         }}
+    zk.start()
     zk.create("/databases")
     zk.create("/databases/clusterA_conn_10.0.0.2", json.dumps({"node": 1}).encode('utf-8'))
+    zk.stop()
     with mock.patch('zgres.apply.Plugin.conn_info') as conn_info:
         with mock.patch('zgres.zookeeper.KazooClient') as KazooClient:
             KazooClient.return_value = zk
