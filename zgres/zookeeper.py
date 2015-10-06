@@ -194,8 +194,7 @@ class ZooKeeperDeadmanPlugin:
     def _path(self, type, name=None):
         if name is None:
             name = self.app.my_id
-        path = self._path_prefix + type + '/' + self._group_name + '-' + name
-        return path.encode('utf-8')
+        return self._path_prefix + type + '/' + self._group_name + '-' + name
 
     def _db_id_path(self):
         return self._path('static', 'db-id')
@@ -209,21 +208,23 @@ class ZooKeeperDeadmanPlugin:
         self._path_prefix = self.app.config['zookeeper']['path'].strip()
         if not self._path_prefix.endswith('/'):
             self._path_prefix += '/'
-        self._group_name = self.app.config['deadman']['group'].strip()
+        self._group_name = self.app.config['zookeeper']['group'].strip()
         assert '/' not in self._group_name
 
     def dcs_set_database_identifier(self, database_id):
+        database_id = database_id.encode('ascii')
         try:
-            self._zk.create(self._db_id_path(), database_id)
+            self._zk.create(self._db_id_path(), database_id, makepath=True)
         except kazoo.exceptions.NodeExistsError:
             return False
         return True
 
     def dcs_get_database_identifier(self):
         try:
-            return self._zk.get(self._db_id_path())
+            dbid, stat = self._zk.get(self._db_id_path())
         except kazoo.exceptions.NoNodeError:
             return None
+        return dbid.decode('ascii')
 
     def dcs_lock(self, name):
         try:

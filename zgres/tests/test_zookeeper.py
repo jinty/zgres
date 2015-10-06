@@ -8,12 +8,8 @@ from zgres import sync
 
 from zake.fake_client import FakeClient
 
-@pytest.fixture
-def zk():
-    return FakeClient()
-
 @pytest.mark.asyncio
-async def test_functional(zk):
+async def test_functional():
     """Test as much of the whole stack as we can.
     
     got a nasty sleep(0.1) in it. there should only BE ONE of these tests! the
@@ -26,6 +22,7 @@ async def test_functional(zk):
             'path': '/databases',
             }
         }}
+    zk = FakeClient()
     zk.start()
     zk.create("/databases")
     zk.create("/databases/clusterA_conn_10.0.0.2", json.dumps({"node": 1}).encode('utf-8'))
@@ -47,3 +44,19 @@ async def test_functional(zk):
                 mock.call({'clusterA': {'nodes': {'10.0.0.2': {'node': 1}, '10.0.0.1': {'node': 1}}}})]
             )
 
+@pytest.fixture
+def deadman_plugin():
+    app = mock.Mock()
+    app.config = dict(
+            zookeeper=dict(
+                connection_string='localhost:1234',
+                path='/mypath',
+                group='mygroup',
+                ))
+    from zake.fake_client import FakeClient
+    from ..zookeeper import ZooKeeperDeadmanPlugin
+    plugin = ZooKeeperDeadmanPlugin('zgres#zookeeper', app)
+    with mock.patch('zgres.zookeeper.KazooClient') as KazooClient:
+        KazooClient.return_value = FakeClient()
+        plugin.initialize()
+    return plugin
