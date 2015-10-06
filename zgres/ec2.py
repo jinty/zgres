@@ -1,4 +1,3 @@
-import uuid
 import asyncio
 import boto
 import boto.utils
@@ -28,9 +27,6 @@ class Ec2SnapshotBackupPlugin:
         devices = [d[1] for d in sorted(devices.items())]
         self._devices = [d['device'] for d in devices]
         delf._device_options = devices
-
-    def _uuid(self):
-        return uuid.uuid1()
 
     def _conn(self):
         return boto.ec2.connect_to_region(self._region)
@@ -99,12 +95,16 @@ class Ec2SnapshotBackupPlugin:
         to_detach.reverse()
         for d in to_detach:
             vol = instance_volumes[d]
-            check_call(['umount', d])
+            check_call(['umount', self._ec2_device_to_local(d)])
             if not vol.detach():
                 logging.error('Force detaching {}'.format(d))
                 if not vol.detach(force=True):
                     raise Exception('Could not detach: {}'.format(d))
             vol.delete()
+
+    def _ec2_device_to_local(self, device):
+        """/dev/sdf -> /dev/xvdf"""
+        return device.replace('/dev/sd', '/dev/xvd')
 
     def postgresql_restore(self):
         conn = self._conn()
@@ -123,4 +123,4 @@ class Ec2SnapshotBackupPlugin:
         self._detach_my_devices()
         for d in self._device_options:
             to_attach[d['device']].attach(self._instance_id, d['device'])
-            check_call(['mount', d['device']])
+            check_call(['mount', self._ec2_device_to_local(d['device'])])
