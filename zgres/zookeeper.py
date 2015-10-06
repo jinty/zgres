@@ -4,6 +4,7 @@ import queue
 from functools import partial
 from collections.abc import Mapping
 
+import kazoo.exceptions
 from kazoo.client import KazooClient
 
 def state_to_databases(state, get_state):
