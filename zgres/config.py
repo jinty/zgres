@@ -11,7 +11,9 @@ def _add_common_args(parser):
             help='Use this config file or directory. If a directory, all files ending with .ini are parsed. Order is important with latter files over-riding earlier ones.')
 
 def _setup_logging(config):
-    logging.basicConfig(level=logging.WARN)
+    # TODO: send INFO and maybe DEBUG to stdout
+    # ERROR and WARN to stderr
+    logging.basicConfig(level=logging.INFO)
 
 def _get_config(args):
     config = configparser.ConfigParser()
