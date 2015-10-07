@@ -51,6 +51,34 @@ def test_locks(plugin):
     assert pluginA.dcs_lock('mylock') == False
     assert pluginB.dcs_get_lock_owner('mylock') == 'B'
     assert pluginA.dcs_get_lock_owner('mylock') == 'B'
+
+def test_locks_are_ephemeral(plugin):
     # locks are not persistent
+    pluginA = plugin()
+    pluginA.app.my_id = 'A'
+    pluginB = plugin()
+    pluginB.app.my_id = 'B'
+    assert pluginB.dcs_lock('mylock') == True
+    assert pluginA.dcs_get_lock_owner('mylock') == 'B'
     pluginB._disconnect()
     assert pluginA.dcs_get_lock_owner('mylock') is None
+
+def test_locks_idempotency(plugin):
+    pluginA = plugin()
+    pluginA.app.my_id = 'A'
+    assert pluginA.dcs_get_lock_owner('mylock') == None
+    assert pluginA.dcs_lock('mylock') == True
+    assert pluginA.dcs_lock('mylock') == True
+    assert pluginA.dcs_get_lock_owner('mylock') == 'A'
+    pluginA.dcs_unlock('mylock')
+    pluginA.dcs_unlock('mylock')
+    assert pluginA.dcs_get_lock_owner('mylock') == None
+
+def test_dont_unlock_others(plugin):
+    pluginA = plugin()
+    pluginA.app.my_id = 'A'
+    pluginB = plugin()
+    pluginB.app.my_id = 'B'
+    assert pluginA.dcs_lock('mylock') == True
+    pluginB.dcs_unlock('mylock')
+    assert pluginA.dcs_get_lock_owner('mylock') == 'A'

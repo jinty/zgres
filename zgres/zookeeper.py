@@ -230,11 +230,16 @@ class ZooKeeperDeadmanPlugin:
         try:
             self._zk.create(self._lock_path(name), self.app.my_id.encode('utf-8'), ephemeral=True, makepath=True)
         except kazoo.exceptions.NodeExistsError:
+            owner = self.dcs_get_lock_owner(name)
+            if owner == self.app.my_id:
+                return True
             return False
         return True
 
     def dcs_unlock(self, name):
-        self._zk.delete(self._lock_path(name))
+        owner = self.dcs_get_lock_owner(name)
+        if owner == self.app.my_id:
+            self._zk.delete(self._lock_path(name))
 
     def dcs_get_lock_owner(self, name):
         try:
