@@ -87,6 +87,13 @@ def test_set_delete_info(pluginAB):
     assert pluginA.dcs_get_info('conn') == dict(server='B')
     assert pluginB.dcs_get_info('conn') == None
     assert pluginA.dcs_get_info('another') == None
+    pluginA.dcs_delete_info('conn')
+    assert pluginA.dcs_get_info('conn') == None
+
+def test_set_delete_info_is_idempotent(plugin):
+    plugin = plugin()
+    plugin.dcs_delete_info('conn')
+    plugin.dcs_delete_info('conn')
 
 def test_info_is_ephemeral(plugin):
     # 2 servers with the same id should NOT happen in real life...

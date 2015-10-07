@@ -47,7 +47,7 @@ async def test_functional():
 @pytest.fixture
 def deadman_plugin():
     storage = None
-    def factory(my_id=42):
+    def factory(my_id='42'):
         nonlocal storage
         app = mock.Mock()
         app.my_id = my_id

@@ -263,6 +263,12 @@ class ZooKeeperDeadmanPlugin:
             return None
         return json.loads(data.decode('ascii'))
 
+    def dcs_delete_info(self, type):
+        try:
+            self._zk.delete(self._path(type))
+        except kazoo.exceptions.NoNodeError:
+            pass
+
     def _disconnect(self):
         # for testing only
         self._zk.stop()
