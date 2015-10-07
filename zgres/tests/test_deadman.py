@@ -179,3 +179,22 @@ def test_replica_start(app):
             call.postgresql_am_i_replica(),
             call.dcs_set_conn_info({'a': 'b'}),
            ] 
+
+def test_restart(app):
+    app, plugins = app
+    setup_plugins(plugins)
+    timeout = app.initialize()
+    app._plugins.reset_mock()
+    with patch('time.sleep') as sleep:
+        with patch('sys.exit') as exit:
+            app.restart(10)
+            assert exit.called_once_with(0)
+        assert sleep.called_once_with(10)
+    assert app._plugins.mock_calls ==  [
+            call.dcs_unlock('master'),
+            call.dcs_delete_info('state'),
+            call.dcs_delete_info('conn'),
+            ]
+    # shut down cleanly and immediately
+    assert timeout == 0
+

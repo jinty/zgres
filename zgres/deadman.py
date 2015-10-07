@@ -1,4 +1,5 @@
 import sys
+import time
 import uuid
 import asyncio
 import logging
@@ -24,6 +25,12 @@ _PLUGIN_API = [
             required=True,
             type='multiple'),
         dict(name='dcs_get_database_identifier',
+            required=True,
+            type='single'),
+        dict(name='dcs_delete_info',
+            required=True,
+            type='single'),
+        dict(name='dcs_put_info',
             required=True,
             type='single'),
         dict(name='dcs_lock',
@@ -232,11 +239,10 @@ class App:
             return
         app.restart(timeout)
 
-    @classmethod
     def restart(self, timeout):
-        self.dcs_unlock('master')
-        self.dcs_remove_state_info()
-        self.dcs_remove_conn_info()
+        self._plugins.dcs_unlock('master')
+        self._plugins.dcs_delete_info('state')
+        self._plugins.dcs_delete_info('conn')
         logging.info('sleeping for {} seconds, then restarting'.format(timeout))
         time.sleep(timeout) # yes, this blocks everything. that's the point of it!
         sys.exit(0) # hopefully we get restarted immediately

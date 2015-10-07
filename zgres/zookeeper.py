@@ -248,9 +248,20 @@ class ZooKeeperDeadmanPlugin:
             return None
         return owner.decode('utf-8')
 
-    def dcs_set_conn_info(self, data):
+    def dcs_set_info(self, type, data):
         data = json.dumps(data)
-        return self._zk.create(self._path('conn'), data, ephemeral=True)
+        data = data.encode('ascii')
+        try:
+            self._zk.set(self._path(type), data)
+        except kazoo.exceptions.NoNodeError:
+            self._zk.create(self._path(type), data, ephemeral=True, makepath=True)
+
+    def dcs_get_info(self, type):
+        try:
+            data, stat = self._zk.get(self._path(type))
+        except kazoo.exceptions.NoNodeError:
+            return None
+        return json.loads(data.decode('ascii'))
 
     def _disconnect(self):
         # for testing only
