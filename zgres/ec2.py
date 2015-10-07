@@ -1,4 +1,6 @@
 import asyncio
+import uuid
+
 import boto
 import boto.ec2
 import boto.utils
@@ -45,6 +47,9 @@ class Ec2SnapshotBackupPlugin:
                 raise Exception('Device {} in my config is not one that is attached to this instance. I have: {}'.format(
                     d, instance_volumes))
         return instance_volumes
+
+    def _uuid(self):
+        return uuid.uuid1()
 
     def postgresql_backup(self):
         conn = self._conn()
