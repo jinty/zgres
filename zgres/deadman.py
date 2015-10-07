@@ -27,12 +27,7 @@ _PLUGIN_API = [
         dict(name='dcs_get_database_identifier',
             required=True,
             type='single'),
-        dict(name='dcs_delete_info',
-            required=True,
-            type='single'),
-        dict(name='dcs_put_info',
-            required=True,
-            type='single'),
+
         dict(name='dcs_lock',
             required=True,
             type='single'),
@@ -42,7 +37,14 @@ _PLUGIN_API = [
         dict(name='dcs_get_lock_owner',
             required=True,
             type='single'),
-        dict(name='dcs_set_conn_info',
+
+        dict(name='dcs_delete_info',
+            required=True,
+            type='multiple'),
+        dict(name='dcs_set_info',
+            required=True,
+            type='multiple'),
+        dict(name='dcs_get_info',
             required=True,
             type='multiple'),
 
@@ -227,7 +229,7 @@ class App:
                 if not locked:
                     # for some reason we cannot lock the master, restart and try again
                     self.restart(60) # give the
-            self._plugins.dcs_set_conn_info(self._conn_info)
+            self._plugins.dcs_set_info('conn', self._conn_info)
 
     @classmethod
     def run(cls, config):

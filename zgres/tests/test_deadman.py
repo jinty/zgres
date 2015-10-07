@@ -138,7 +138,7 @@ async def test_master_start(app):
     assert plugins.mock_calls ==  [
             call.postgresql_am_i_replica(),
             call.dcs_lock('master'),
-            call.dcs_set_conn_info({}),
+            call.dcs_set_info('conn', {}),
            ] 
 
 def test_replica_start(app):
@@ -177,7 +177,7 @@ def test_replica_start(app):
     app.healthy('test_monitor')
     assert plugins.mock_calls ==  [
             call.postgresql_am_i_replica(),
-            call.dcs_set_conn_info({'a': 'b'}),
+            call.dcs_set_info('conn', {'a': 'b'}),
            ] 
 
 def test_restart(app):
