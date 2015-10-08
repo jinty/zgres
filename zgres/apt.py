@@ -104,10 +104,10 @@ class AptPostgresqlPlugin:
         check_call(['pg_createcluster', self._version, self._cluster_name])
         self._assert_config()
         if self._superuser_connect_as:
-            check_call(['createuser', '-s', '-h', self._socket_dir, '-p', self._port, self._superuser_connect_as])
+            check_call(['createuser', '-s', '-h', self._socket_dir(), '-p', self._port(), self._superuser_connect_as])
 
     def postgresql_connect(self):
-        return psycopg2.connect(database='postgres', user=self._superuser_connect_as, host=self._socket_dir)
+        return psycopg2.connect(database='postgres', user=self._superuser_connect_as, host=self._socket_dir(), port=self._port())
 
     def postgresql_am_i_replica(self):
         return os.path.exists(os.path.join(self._data_dir(), 'recovery.conf'))
