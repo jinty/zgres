@@ -49,6 +49,9 @@ _PLUGIN_API = [
             type='multiple'),
 
         ######### Dealing with the local postgresql cluster
+        dict(name='postgresql_connect', # get a superuser, local connection to postgresql
+            required=True,
+            type='single'),
         dict(name='postgresql_get_database_identifier',
             required=True,
             type='single'),
@@ -248,6 +251,10 @@ class App:
         logging.info('sleeping for {} seconds, then restarting'.format(timeout))
         time.sleep(timeout) # yes, this blocks everything. that's the point of it!
         sys.exit(0) # hopefully we get restarted immediately
+
+    def postgresql_connect(self):
+        # expose postgresql_connect for other plugins to use
+        return self._plugins.postgresql_connect()
 
 #
 # Command Line Scripts

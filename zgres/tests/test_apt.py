@@ -34,7 +34,7 @@ class FakeSleeper:
             raise AssertionError('boom')
 
 def test_config_file(plugin):
-    assert plugin._data_dir() == '/var/lib/postgresql/9.42/answers/'
+    assert plugin._config_file(name='pg_hba.conf') == '/etc/postgresql/9.42/answers/pg_hba.conf'
 
 @pytest.mark.asyncio
 async def test_monitoring(plugin):
