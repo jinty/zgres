@@ -71,7 +71,7 @@ class Ec2SnapshotBackupPlugin:
                     'zgres:wal_position': position,
                     'zgres:device': d})
         finally:
-            pg_conn.cursor().execute("select pg_stop_backup(%s);", (backup_id, ))
+            pg_conn.cursor().execute("select pg_stop_backup();")
 
     def _get_my_snapshots(self, conn):
         snapshots = {}
