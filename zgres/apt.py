@@ -5,7 +5,6 @@ import logging
 from subprocess import check_output, call, check_call
 
 from . import systemd
-import psycopg2
 
 class AptPostgresqlPlugin:
     """Plugin for controlling postgresql installed by apt.
@@ -108,8 +107,8 @@ class AptPostgresqlPlugin:
             check_call(['sudo', '-u', 'postgres', 'createuser', '-s', '-h', self._socket_dir(), '-p', self._port(), self._superuser_connect_as])
             self.postgresql_stop()
 
-    def postgresql_connect(self):
-        return psycopg2.connect(database='postgres', user=self._superuser_connect_as, host=self._socket_dir(), port=self._port())
+    def postgresql_connect_info(self):
+        return dict(database='postgres', user=self._superuser_connect_as, host=self._socket_dir(), port=self._port())
 
     def postgresql_am_i_replica(self):
         return os.path.exists(os.path.join(self._data_dir(), 'recovery.conf'))

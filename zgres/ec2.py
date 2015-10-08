@@ -4,6 +4,7 @@ import uuid
 import boto
 import boto.ec2
 import boto.utils
+import psycopg2
 
 from subprocess import check_call
 
@@ -57,7 +58,7 @@ class Ec2SnapshotBackupPlugin:
         instance_volumes = self._get_volumes_for_our_devices(conn)
         # actually do the backup
         backup_id = str(self._uuid())
-        pg_conn = self.app.postgresql_connect()
+        pg_conn = psycopg2.connect(**self.app.postgresql_connect_info())
         cur = pg_conn.cursor()
         cur.execute("select pg_start_backup(%s);", (backup_id, ))
         position = cur.fetchall()[0][0]
