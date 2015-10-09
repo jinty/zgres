@@ -224,14 +224,20 @@ class App:
                 # the "master_locked" event should stop replication now
                 return
 
-    def unhealthy(self, key, reason):
-        """Plugins call this if they want to declare the instance unhealthy"""
-        self.health_problems[key] = reason
+    def unhealthy(self, key, reason, can_be_replica=False):
+        """Plugins call this if they want to declare the instance unhealthy.
+
+        If an instance is unhealthy, but can continue to serve as a replica, set can_be_replica=True
+        """
+        self.health_problems[key] = dict(reason=reason, can_be_replica=can_be_replica)
         if 'zgres.initialize' in self.health_problems:
             return
         logging.warn('I am unhelthy: ({}) {}'.format(key, reason))
-        self.dcs_remove_conn_info()
-        if not self._plugins.postgresql_am_i_replica():
+        if self._plugins.postgresql_am_i_replica():
+            if not can_be_replica:
+                self.dcs_remove_conn_info()
+        else:
+            self.dcs_remove_conn_info()
             self._loop.call_soon(self._loop.create_task, self._handle_unhealthy_master())
 
     async def _handle_unhealthy_master(self):

@@ -132,7 +132,7 @@ async def test_master_start(app):
             ]
     # Carry on running afterwards
     assert timeout == None
-    assert app.health_problems == {'test_monitor': 'Waiting for first check'}
+    assert app.health_problems == {'test_monitor': {'can_be_replica': False, 'reason': 'Waiting for first check'}}
     # Our test monitor becomes healthy
     plugins.reset_mock()
     app.healthy('test_monitor')
@@ -171,7 +171,7 @@ def test_replica_start(app):
             ]
     # Carry on running afterwards
     assert timeout == None
-    assert app.health_problems == {'test_monitor': 'Waiting for first check'}
+    assert app.health_problems == {'test_monitor': {'can_be_replica': False, 'reason': 'Waiting for first check'}}
     # Our test monitor becomes healthy
     plugins.reset_mock()
     app.healthy('test_monitor')
