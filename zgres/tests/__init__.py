@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import sleep
 
 class FakeSleeper:
 
@@ -17,5 +18,5 @@ class FakeSleeper:
         self.log.append(delay)
         if len(self.log) >= self.loops:
             self.finished.set()
-            await asyncio.sleep(10000)
+            await sleep(10000)
             raise AssertionError('boom')
