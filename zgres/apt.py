@@ -106,6 +106,7 @@ class AptPostgresqlPlugin:
 
     def postgresql_initdb(self):
         if os.path.exists(self._config_file()):
+            self.postgresql_stop()
             check_call(['pg_dropcluster', '--stop', self._version, self._cluster_name])
         check_call(['pg_createcluster', self._version, self._cluster_name])
         self._copy_config()
