@@ -9,6 +9,8 @@ import zgres._plugin
 import zgres.config
 from zgres import utils
 
+_missing = object()
+
 _PLUGIN_API = [
         # Run any initialization code plugins need. Allways called first. Return value ignored
         dict(name='initialize',
@@ -244,7 +246,9 @@ class App:
 
     def healthy(self, key):
         """Plugins call this if they want to declare the instance unhealthy"""
-        reason = self.health_problems.pop(key)
+        reason = self.health_problems.pop(key, _missing)
+        if reason is _missing:
+            return # no-op, we were already healthy
         logging.warn('Stopped being unhealthy for this reason: ({}) {}'.format(key, reason))
         if self.health_problems:
             logging.warn('I am still unhelthy for these reasons: {}'.format(self.health_problems))
