@@ -35,49 +35,45 @@ def test_database_identifier(pluginAB):
 
 def test_locks(pluginAB):
     pluginA, pluginB = pluginAB
-    # locks are empty by default
-    assert pluginB.dcs_get_lock_owner('mylock') is None
     # if one plugin takes one, no others can
     assert pluginA.dcs_lock('mylock') == True
     assert pluginB.dcs_lock('mylock') == False
     assert pluginB.dcs_lock('yourlock') == True
     assert pluginA.dcs_lock('yourlock') == False
-    # we can see the owner of the lock
-    assert pluginB.dcs_get_lock_owner('mylock') == 'A'
-    assert pluginA.dcs_get_lock_owner('mylock') == 'A'
-    assert pluginB.dcs_get_lock_owner('yourlock') == 'B'
-    assert pluginA.dcs_get_lock_owner('yourlock') == 'B'
     # and we can unlock them
     pluginA.dcs_unlock('mylock')
     assert pluginB.dcs_lock('mylock') == True
     assert pluginA.dcs_lock('mylock') == False
-    assert pluginB.dcs_get_lock_owner('mylock') == 'B'
-    assert pluginA.dcs_get_lock_owner('mylock') == 'B'
 
 def test_locks_are_ephemeral(pluginAB):
     pluginA, pluginB = pluginAB
     # locks are not persistent
     assert pluginB.dcs_lock('mylock') == True
-    assert pluginA.dcs_get_lock_owner('mylock') == 'B'
+    assert pluginA.dcs_lock('mylock') == False
     pluginB._disconnect()
-    assert pluginA.dcs_get_lock_owner('mylock') is None
+    assert pluginA.dcs_lock('mylock') == True
 
-def test_locks_idempotency(plugin):
-    pluginA = plugin()
-    pluginA.app.my_id = 'A'
-    assert pluginA.dcs_get_lock_owner('mylock') == None
+def test_locks_idempotency(pluginAB):
+    pluginA, pluginB = pluginAB
     assert pluginA.dcs_lock('mylock') == True
     assert pluginA.dcs_lock('mylock') == True
-    assert pluginA.dcs_get_lock_owner('mylock') == 'A'
+    assert pluginB.dcs_lock('mylock') == False
     pluginA.dcs_unlock('mylock')
     pluginA.dcs_unlock('mylock')
-    assert pluginA.dcs_get_lock_owner('mylock') == None
+    assert pluginB.dcs_lock('mylock') == True
+
+def test_locks_are_attached_to_the_connection_NOT_id(plugin):
+    # a second plugin with a second connection cannot re-lock the same lock
+    pluginA1 = plugin(my_id='A')
+    pluginA2 = plugin(my_id='A')
+    assert pluginA1.dcs_lock('mylock') == True
+    assert pluginA2.dcs_lock('mylock') == False
 
 def test_dont_unlock_others(pluginAB):
     pluginA, pluginB = pluginAB
     assert pluginA.dcs_lock('mylock') == True
     pluginB.dcs_unlock('mylock')
-    assert pluginA.dcs_get_lock_owner('mylock') == 'A'
+    assert pluginB.dcs_lock('mylock') == False
 
 def test_set_delete_info(pluginAB):
     pluginA, pluginB = pluginAB

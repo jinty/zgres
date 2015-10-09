@@ -227,14 +227,19 @@ class ZooKeeperDeadmanPlugin:
         return dbid.decode('ascii')
 
     def dcs_lock(self, name):
+        path = self._lock_path(name)
         try:
-            self._zk.create(self._lock_path(name), self.app.my_id.encode('utf-8'), ephemeral=True, makepath=True)
+            self._zk.create(path, self.app.my_id.encode('utf-8'), ephemeral=True, makepath=True)
+            return True
         except kazoo.exceptions.NodeExistsError:
-            owner = self.dcs_get_lock_owner(name)
-            if owner == self.app.my_id:
-                return True
+            pass
+        try:
+            owner, stat = self._zk.get(self._lock_path(name))
+        except kazoo.exceptions.NoNodeError:
             return False
-        return True
+        if stat.owner_session_id == self._zk.session_id:
+            return True
+        return False
 
     def dcs_unlock(self, name):
         owner = self.dcs_get_lock_owner(name)

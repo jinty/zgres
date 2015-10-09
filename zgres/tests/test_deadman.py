@@ -108,7 +108,6 @@ async def test_master_start(app):
             plugins,
             dcs_get_database_identifier='1234',
             dcs_lock=True,
-            dcs_get_lock_owner=None,
             postgresql_am_i_replica=False,
             postgresql_get_database_identifier='1234')
     def start_monitoring():
@@ -149,7 +148,6 @@ def test_replica_start(app):
             plugins,
             dcs_get_database_identifier='1234',
             dcs_lock=True,
-            dcs_get_lock_owner=None,
             postgresql_am_i_replica=True,
             postgresql_get_database_identifier='1234')
     app._conn_info['a'] = 'b'

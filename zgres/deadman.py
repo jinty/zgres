@@ -36,9 +36,6 @@ _PLUGIN_API = [
         dict(name='dcs_unlock',
             required=True,
             type='multiple'),
-        dict(name='dcs_get_lock_owner',
-            required=True,
-            type='single'),
 
         dict(name='dcs_delete_info',
             required=True,
