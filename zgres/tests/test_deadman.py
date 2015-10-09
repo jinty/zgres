@@ -46,9 +46,11 @@ def test_master_bootstrap(app):
             call.postgresql_get_database_identifier(),
             # lock the database identifier so no-one else gets here
             call.dcs_lock('database_identifier'),
-            # Make the first backup while locked
+            # while locked make sure there is no id set in the DCS before we got the lock
+            call.dcs_get_database_identifier(),
+            # Make the first backup while locked with no DCS
             call.postgresql_backup(),
-            # set the database identifier
+            # set the database identifier AFTER
             call.dcs_set_database_identifier('42')
             ]
     # shut down cleanly and immediately
@@ -75,8 +77,8 @@ def test_master_boostrap_fails_to_lock_db_id(app):
             # lock the database identifier so no-one else gets here
             call.dcs_lock('database_identifier')
             ]
-    # shut down cleanly and immediately
-    assert timeout == 60
+    # shut down cleanly
+    assert timeout == 5
 
 def test_replica_bootstrap(app):
     app, plugins = app

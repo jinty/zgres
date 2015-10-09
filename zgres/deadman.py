@@ -88,6 +88,7 @@ _PLUGIN_API = [
 class App:
 
     _giveup_lock = asyncio.Lock()
+    database_identifier = None
 
     def __init__(self, config):
         self.health_problems = {}
@@ -113,15 +114,25 @@ class App:
     def master_bootstrap(self):
         # Bootstrap the master, make sure that the master can be
         # backed up and started before we set the database id
+        self.logger.info('Initializing master DB')
         self._plugins.postgresql_initdb()
         self._plugins.postgresql_start()
         database_id = self._plugins.postgresql_get_database_identifier()
-        if not self._plugins.dcs_lock('database_identifier'):
-            return 60
-        self._plugins.postgresql_backup()
-        if self._plugins.dcs_set_database_identifier(database_id):
+        self.logger.info('Initializing done, master database identifier: {}'.format(database_id))
+        if self._plugins.dcs_lock('database_identifier'):
+            self.logger.info('Got database identifer lock')
+            if self._plugins.dcs_get_database_identifier() is not None:
+                self.logger.info('Database identifier already set, restarting to become replica')
+                return 0
+            self.logger.info('No database identifer yet, performing first backup')
+            self.database_identifier = database_id
+            self._plugins.postgresql_backup()
+            if not self._plugins.dcs_set_database_identifier(database_id):
+                raise AssertionError('Something is VERY badly wrong.... this should never happen....')
             self.logger.info('Successfully bootstrapped master and set database identifier: {}'.format(database_id))
-        return 0
+            return 0
+        self.logger.info('Could not set database identifier in DCS. maybe another master beat us? trying again')
+        return 5
 
     def initialize(self):
         """Initialize the application
@@ -147,6 +158,7 @@ class App:
         if my_database_id != their_database_id:
             self.logger.info('My database identifer is different ({}), bootstrapping as replica'.format(my_database_id))
             return self.replica_bootstrap()
+        self.database_identifier = my_database_id
         am_replica = self._plugins.postgresql_am_i_replica()
         if not am_replica:
             self.logger.info('I am NOT a replica, trying to get the master lock')

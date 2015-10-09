@@ -67,7 +67,8 @@ class Ec2SnapshotBackupPlugin:
                 v = instance_volumes[d]
                 snapshot = conn.create_snapshot(v.id, "Zgres backup")
                 snapshot.add_tags({
-                    'zgres:db_id': database_identifier,
+                    'zgres:id': backup_id,
+                    'zgres:db_id': self.app.database_identifier,
                     'zgres:wal_position': position,
                     'zgres:device': d})
         finally:
@@ -78,7 +79,7 @@ class Ec2SnapshotBackupPlugin:
         for snapshot in conn.get_all_snapshots(
                 filter={
                     'status': 'completed',
-                    'tag:zgres:db_id': database_identifier}):
+                    'tag:zgres:db_id': self.app.database_identifier}):
             wal_pos = snapshot.tags.get('zgres:wal_position')
             if wal_pos is None:
                 continue
