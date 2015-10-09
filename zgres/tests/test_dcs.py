@@ -30,7 +30,7 @@ def test_database_identifier(pluginAB):
     assert pluginB.dcs_set_database_identifier('49') == False
     assert pluginB.dcs_get_database_identifier() == '42'
     # database_identifiers are persistent
-    pluginA._disconnect()
+    pluginA.dcs_disconnect()
     assert pluginB.dcs_get_database_identifier() == '42'
 
 def test_locks(pluginAB):
@@ -50,7 +50,7 @@ def test_locks_are_ephemeral(pluginAB):
     # locks are not persistent
     assert pluginB.dcs_lock('mylock') == True
     assert pluginA.dcs_lock('mylock') == False
-    pluginB._disconnect()
+    pluginB.dcs_disconnect()
     assert pluginA.dcs_lock('mylock') == True
 
 def test_locks_idempotency(pluginAB):
@@ -98,5 +98,5 @@ def test_info_is_ephemeral(plugin):
     pluginA.dcs_set_info('conn', dict(server='A'))
     assert pluginA.dcs_get_info('conn') == dict(server='A')
     assert pluginA2.dcs_get_info('conn') == dict(server='A')
-    pluginA._disconnect()
+    pluginA.dcs_disconnect()
     assert pluginA2.dcs_get_info('conn') == None

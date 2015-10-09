@@ -274,7 +274,7 @@ class ZooKeeperDeadmanPlugin:
         except kazoo.exceptions.NoNodeError:
             pass
 
-    def _disconnect(self):
+    def dcs_disconnect(self):
         # for testing only
         self._zk.stop()
 

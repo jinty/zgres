@@ -191,9 +191,7 @@ def test_restart(app):
             assert exit.called_once_with(0)
         assert sleep.called_once_with(10)
     assert app._plugins.mock_calls ==  [
-            call.dcs_unlock('master'),
-            call.dcs_delete_info('state'),
-            call.dcs_delete_info('conn'),
+            call.dcs_disconnect()
             ]
     # shut down cleanly and immediately
     assert timeout == 0

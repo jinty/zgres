@@ -47,6 +47,10 @@ _PLUGIN_API = [
             required=True,
             type='multiple'),
 
+        dict(name='dcs_disconnect',
+            required=True,
+            type='multiple'),
+
         ######### Dealing with the local postgresql cluster
         dict(name='postgresql_connect_info', # return a dict with the connection info
             required=True,
@@ -268,9 +272,7 @@ class App:
         app.restart(timeout)
 
     def restart(self, timeout):
-        self._plugins.dcs_unlock('master')
-        self._plugins.dcs_delete_info('state')
-        self._plugins.dcs_delete_info('conn')
+        self._plugins.dcs_disconnect()
         logging.info('sleeping for {} seconds, then restarting'.format(timeout))
         time.sleep(timeout) # yes, this blocks everything. that's the point of it!
         sys.exit(0) # hopefully we get restarted immediately
