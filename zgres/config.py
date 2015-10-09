@@ -17,6 +17,8 @@ def _add_common_args(parser):
             help='Use this config file or directory. If a directory, all files ending with .ini are parsed. Order is important with latter files over-riding earlier ones.')
 
 def _setup_logging(config):
+    # TODO: a --debug option which prints DEBUG messages
+    # TODO: a --quiet option which hides the INFO messages
     root_logger = logging.getLogger()
     # less than WARN to stderr
     stdout = logging.StreamHandler(sys.stdout)
@@ -40,7 +42,6 @@ def _get_config(args):
     return config
 
 def parse_args(parser, argv):
-    # TODO: add args for setting loglevel here
     _add_common_args(parser)
     args = parser.parse_args(args=argv[1:])
     config = _get_config(args)
