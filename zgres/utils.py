@@ -1,12 +1,17 @@
 import sys
+import time
 import asyncio
 import logging
 
 def exception_handler(loop, context):
-    loop.default_exception_handler(context)
-    logging.error('Unexpected exception, exiting...')
-    # XXX: do we need to log the exception here?
-    sys.exit(1)
+    sleep_time = 10
+    try:
+        loop.default_exception_handler(context)
+        logging.error('Unexpected exception, exiting...')
+        # TODO: can we do some kind of backoff?
+    finally:
+        time.sleep(sleep_time)
+        sys.exit(1)
 
 def run_asyncio(*callback_and_args):
     loop = asyncio.get_event_loop()
