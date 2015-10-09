@@ -45,8 +45,6 @@ class AptPostgresqlPlugin:
         return os.path.join(self._pg_config_dir(), name)
 
     def _set_conf_value(self, key, value):
-        value = value.replace("'", "''")
-        value = "'{}'".format(value)
         value = check_call(['pg_conftool', self._version, self._cluster_name, 'set', key, value])
 
     def _get_conf_value(self, key):
