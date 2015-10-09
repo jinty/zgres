@@ -7,3 +7,4 @@
 /develop-eggs
 /.installed.cfg
 /RELEASE-VERSION
+/.cache
