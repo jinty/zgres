@@ -77,7 +77,7 @@ class AptPostgresqlPlugin:
             destination = self._config_file(filename)
             shutil.copyfile(source, destination)
 
-    def _set_config_values(self)
+    def _set_config_values(self):
         for k, v in self.app.config['apt'].items():
             if not k.startswith('postgresql.conf.'):
                 continue
