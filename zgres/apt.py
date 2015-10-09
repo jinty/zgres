@@ -1,4 +1,5 @@
 import os
+import shutil
 import asyncio
 from asyncio import sleep
 import logging
@@ -43,8 +44,13 @@ class AptPostgresqlPlugin:
     def _config_file(self, name='postgresql.conf'):
         return os.path.join(self._pg_config_dir(), name)
 
+    def _set_conf_value(self, key, value):
+        value = value.replace("'", "''")
+        value = "'{}'".format(value)
+        value = check_call(['pg_conftool', self._version, self._cluster_name, 'set', key, value])
+
     def _get_conf_value(self, key):
-        value = check_output(['pg_conftool', '-s', '9.4', 'main', 'show', key])
+        value = check_output(['pg_conftool', '-s', self._version, self._cluster_name, 'show', key])
         value = value.decode('ascii').strip() # encoding unspecified, ascii is safe...
         if value.startswith("'") and value.endswith("'"):
             value = value[1:-1]
@@ -62,20 +68,22 @@ class AptPostgresqlPlugin:
     def _service(self):
         return 'postgresql@{}-{}.service'.format(self._version, self._cluster_name)
 
-    def _assert_config(self):
+    def _copy_config(self):
         for filename in ['environment', 'pg_ctl.conf', 'pg_hba.conf', 'pg_ident.conf', 'postgresql.conf', 'start.conf']:
             source = os.path.join(self._config_dir, filename)
             if not os.path.exists(source):
                 # no source, so don't replace target
                 continue
             destination = self._config_file(filename)
-            if os.path.realpath(source) == os.path.realpath(destination) and os.path.islink(destination):
-                # dest is a symbolic link and is the same as source, nothing to do
+            shutil.copyfile(source, destination)
+
+    def _set_config_values(self)
+        for k, v in self.app.config['apt'].items():
+            if not k.startswith('postgresql.conf.'):
                 continue
-            # ok, so replace
-            if os.path.exists(destination):
-                os.remove(destination)
-            os.symlink(source, destination)
+            k = k[16:]
+            v = v.strip()
+            self._set_conf_value(k, v)
 
     def postgresql_get_database_identifier(self):
         if not os.path.exists(self._config_file()):
@@ -92,6 +100,7 @@ class AptPostgresqlPlugin:
         return None
 
     def postgresql_start(self):
+        self._set_config_values()
         check_call(['systemctl', 'start', self._service()])
 
     def postgresql_stop(self):
@@ -101,7 +110,8 @@ class AptPostgresqlPlugin:
         if os.path.exists(self._config_file()):
             check_call(['pg_dropcluster', '--stop', self._version, self._cluster_name])
         check_call(['pg_createcluster', self._version, self._cluster_name])
-        self._assert_config()
+        self._copy_config()
+        self._set_config_values()
         if self._superuser_connect_as:
             self.postgresql_start()
             check_call(['sudo', '-u', 'postgres', 'createuser', '-s', '-h', self._socket_dir(), '-p', self._port(), self._superuser_connect_as])

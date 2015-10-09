@@ -28,7 +28,7 @@ def _setup_logging(config):
     root_logger.addHandler(stderr)
 
 def _get_config(args):
-    config = configparser.ConfigParser()
+    config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
     for file_or_dir in args.config:
         if os.path.isfile(file_or_dir):
             config.read_file(open(file_or_dir, 'r'))
