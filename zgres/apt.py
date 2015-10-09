@@ -91,7 +91,7 @@ class AptPostgresqlPlugin:
             self._data_dir()])
         data = data.decode('latin-1') # I don't care, don't fail, the data I am interested in is ascii
         for line in data.splitlines():
-            if line.startswith('Data page checksum version:'):
+            if line.startswith('Database system identifier:'):
                 _, dbid = line.split(':', 1)
                 dbid = dbid.strip()
                 return dbid
