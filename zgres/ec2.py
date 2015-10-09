@@ -77,7 +77,7 @@ class Ec2SnapshotBackupPlugin:
     def _get_my_snapshots(self, conn):
         snapshots = {}
         for snapshot in conn.get_all_snapshots(
-                filter={
+                filters={
                     'status': 'completed',
                     'tag:zgres:db_id': self.app.database_identifier}):
             wal_pos = snapshot.tags.get('zgres:wal_position')
