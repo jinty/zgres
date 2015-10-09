@@ -2,6 +2,7 @@ from unittest import mock
 import asyncio
 
 import pytest
+from . import FakeSleeper
 
 @pytest.fixture
 def plugin():
@@ -12,26 +13,6 @@ def plugin():
                 postgresql_cluster_name='answers'))
     from ..apt import AptPostgresqlPlugin
     return AptPostgresqlPlugin('zgres#apt', app)
-
-class FakeSleeper:
-
-    def __init__(self, loops=1):
-        self.log = []
-        self.loops = loops
-        self.finished = asyncio.Event()
-        self.wait = self.finished.wait
-        asyncio.get_event_loop().call_later(1, self._watchdog)
-
-    def _watchdog(self):
-        self.finished.set()
-        raise Exception('Timed Out')
-
-    async def __call__(self, delay):
-        self.log.append(delay)
-        if len(self.log) >= self.loops:
-            self.finished.set()
-            await asyncio.sleep(10000)
-            raise AssertionError('boom')
 
 def test_config_file(plugin):
     assert plugin._config_file(name='pg_hba.conf') == '/etc/postgresql/9.42/answers/pg_hba.conf'
