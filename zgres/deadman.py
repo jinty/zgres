@@ -131,27 +131,38 @@ class App:
         """
         self._loop = asyncio.get_event_loop()
         self.unhealthy('zgres.initialize', 'Initializing')
+        self.logger.info('Initializing plugins')
         self._plugins.initialize()
         if self._plugins.get_my_id:
             self.my_id = self._plugins.get_my_id()
         else:
             self.my_id = str(uuid.uuid1())
+        self.logger.info('My ID is: {}'.format(self.my_id))
         their_database_id = self._plugins.dcs_get_database_identifier()
         if their_database_id is None:
+            self.logger.info('Could not find database identifier in DCS, bootstrapping master')
             return self.master_bootstrap()
+        self.logger.info('Found database identifier: {}'.format(their_database_id))
         my_database_id = self._plugins.postgresql_get_database_identifier()
         if my_database_id != their_database_id:
+            self.logger.info('My database identifer is different ({}), bootstrapping as replica'.format(my_database_id))
             return self.replica_bootstrap()
         am_replica = self._plugins.postgresql_am_i_replica()
         if not am_replica:
+            self.logger.info('I am NOT a replica, trying to get the master lock')
             if not self._plugins.dcs_lock('master'):
                 self._plugins.postgresql_stop()
                 if self.is_master_ahead():
+                    self.logger.info('I could not get the master lock and the new master is moving ahead. Goodbye cruel world...')
                     # there is already another master and it has moved ahead of us
                     self._plugins.halt() # should irreperably stop postgresql from running again
                                          # either stop the whole machine, move data directory
+                    return 60
+                self.logger.info('I could not get the master lock, but the master has not moved ahead of me (new master not functioning?) will try again in a bit')
                 return 60
+        self.logger.info('Making sure postgresql is running')
         self._plugins.postgresql_start()
+        self.logger.info('Starting monitors')
         self._plugins.start_monitoring()
         self.healthy('zgres.initialize')
         if not am_replica and self.health_problems:
