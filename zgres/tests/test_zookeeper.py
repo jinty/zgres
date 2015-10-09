@@ -2,11 +2,13 @@ from configparser import ConfigParser
 from unittest import mock
 import json
 import asyncio
+
 import pytest
+from zake.fake_client import FakeClient
+from kazoo.client import KazooState
 
 from zgres import sync
-
-from zake.fake_client import FakeClient
+from . import FakeSleeper
 
 @pytest.mark.asyncio
 async def test_functional():
@@ -45,11 +47,12 @@ async def test_functional():
             )
 
 @pytest.fixture
-def deadman_plugin():
+def deadman_plugin(request):
+    from ..deadman import App
     storage = None
     def factory(my_id='42'):
         nonlocal storage
-        app = mock.Mock()
+        app = mock.Mock(spec_set=App)
         app.my_id = my_id
         app.config = dict(
                 zookeeper=dict(
@@ -57,7 +60,6 @@ def deadman_plugin():
                     path='/mypath',
                     group='mygroup',
                     ))
-        from zake.fake_client import FakeClient
         from ..zookeeper import ZooKeeperDeadmanPlugin
         plugin = ZooKeeperDeadmanPlugin('zgres#zookeeper', app)
         zk = FakeClient(storage=storage)
@@ -67,5 +69,67 @@ def deadman_plugin():
         with mock.patch('zgres.zookeeper.KazooClient') as KazooClient:
             KazooClient.return_value = zk
             plugin.initialize()
+        request.addfinalizer(plugin.dcs_disconnect)
         return plugin
     return factory
+
+@pytest.mark.asyncio
+async def test_session_suspended(deadman_plugin):
+    plugin = deadman_plugin()
+    await asyncio.sleep(0.001)
+    plugin.app.reset_mock()
+    with mock.patch('asyncio.sleep') as sleep:
+        sleeper = FakeSleeper(loops=2)
+        sleep.side_effect = sleeper
+        plugin.app.unhealthy.side_effect = lambda *a, **kw: sleeper.finished.set()
+        # suspend the connection
+        plugin._zk.state = KazooState.SUSPENDED
+        plugin._zk._fire_state_change(KazooState.SUSPENDED)
+        await sleeper.wait()
+        assert plugin.app.mock_calls == [
+                mock.call.unhealthy(
+                    'zgres#zookeeper.no_zookeeper_connection',
+                    'No connection to zookeeper: SUSPENDED',
+                    can_be_replica=True)
+                ]
+        assert sleeper.log == [plugin.tick_time]
+
+@pytest.mark.asyncio
+async def test_session_suspended_but_reconnects(deadman_plugin):
+    plugin = deadman_plugin()
+    await asyncio.sleep(0.001)
+    plugin.app.reset_mock()
+    with mock.patch('asyncio.sleep') as sleep:
+        sleeper = FakeSleeper(loops=2)
+        sleep.side_effect = sleeper
+        plugin.app.unhealthy.side_effect = lambda *a, **kw: sleeper.finished.set()
+        # suspend the connection
+        plugin._zk._fire_state_change(KazooState.SUSPENDED)
+        plugin._zk.state = KazooState.CONNECTED
+        await sleeper.wait()
+        assert plugin.app.mock_calls == []
+        assert sleeper.log == [plugin.tick_time]
+
+@pytest.mark.asyncio
+async def test_session_lost(deadman_plugin):
+    plugin = deadman_plugin()
+    await asyncio.sleep(0.001)
+    plugin.app.reset_mock()
+    plugin._zk._fire_state_change(KazooState.LOST)
+    plugin._zk.state = KazooState.LOST
+    await asyncio.sleep(0.001)
+    assert plugin.app.mock_calls == [
+            mock.call.restart(10)
+            ]
+
+@pytest.mark.asyncio
+async def test_session_connects(deadman_plugin):
+    plugin = deadman_plugin()
+    await asyncio.sleep(0.001)
+    plugin.app.reset_mock()
+    plugin._zk._fire_state_change(KazooState.CONNECTED)
+    plugin._zk.state = KazooState.CONNECTED
+    await asyncio.sleep(0.001)
+    assert plugin.app.mock_calls == [
+            mock.call.healthy('zgres#zookeeper.no_zookeeper_connection')
+            ]

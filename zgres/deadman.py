@@ -91,6 +91,8 @@ _PLUGIN_API = [
 class App:
 
     _giveup_lock = asyncio.Lock()
+    my_id = None
+    config = None
     database_identifier = None
 
     def __init__(self, config):
@@ -278,6 +280,9 @@ class App:
         app.restart(timeout)
 
     def restart(self, timeout):
+        if not self._plugins.postgresql_am_i_replica():
+            # If we are master, we must stop postgresql to avoid a split brain
+            self._plugins.postgresql_stop()
         self._plugins.dcs_disconnect()
         logging.info('sleeping for {} seconds, then restarting'.format(timeout))
         time.sleep(timeout) # yes, this blocks everything. that's the point of it!

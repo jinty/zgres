@@ -5,7 +5,7 @@ from functools import partial
 from collections.abc import Mapping
 
 import kazoo.exceptions
-from kazoo.client import KazooClient
+from kazoo.client import KazooClient, KazooState
 
 def state_to_databases(state, get_state):
     """Convert the state to a dict of connectable database clusters.
@@ -188,7 +188,10 @@ class ZooKeeperSource:
 
 class ZooKeeperDeadmanPlugin:
 
+    tick_time = 2 # seconds: this should match the zookeeper server tick time (normally specified in milliseconds)
+
     def __init__(self, name, app):
+        self.name = name
         self.app = app
 
     def _path(self, type, name=None):
@@ -203,13 +206,36 @@ class ZooKeeperDeadmanPlugin:
         return self._path('lock', name)
 
     def initialize(self):
+        self._loop = asyncio.get_event_loop()
         self._zk = KazooClient(hosts=self.app.config['zookeeper']['connection_string'])
+        self._zk.add_listener(self._session_state_threadsafe)
         self._zk.start()
         self._path_prefix = self.app.config['zookeeper']['path'].strip()
         if not self._path_prefix.endswith('/'):
             self._path_prefix += '/'
         self._group_name = self.app.config['zookeeper']['group'].strip()
         assert '/' not in self._group_name
+
+    def _session_state_threadsafe(self, state):
+        self._loop.call_soon_threadsafe(self._loop.create_task, self._session_state(state))
+
+    async def _session_state(self, state):
+        unhealthy_key = '{}.no_zookeeper_connection'.format(self.name)
+        # runs in separate thread
+        if state == KazooState.SUSPENDED:
+            # we wait for the tick time before taking action to see if
+            # our session gets re-established
+            await asyncio.sleep(self.tick_time)
+            # we have to assume we are irretrevably lost, minimum session
+            # timeout in zookeeper is 2 * tick time so stop postgresql now
+            # and let a failover happen
+            if self._zk.state != KazooState.CONNECTED:
+                self.app.unhealthy(unhealthy_key, 'No connection to zookeeper: {}'.format(self._zk.state), can_be_replica=True)
+        elif state == KazooState.LOST:
+            self.app.restart(10)
+            raise AssertionError('We should never get here')
+        else:
+            self.app.healthy(unhealthy_key)
 
     def dcs_set_database_identifier(self, database_id):
         database_id = database_id.encode('ascii')
@@ -276,5 +302,6 @@ class ZooKeeperDeadmanPlugin:
 
     def dcs_disconnect(self):
         # for testing only
+        self._zk.remove_listener(self._session_state_threadsafe)
         self._zk.stop()
 

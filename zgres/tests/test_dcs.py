@@ -5,7 +5,7 @@ import pytest
 def plugin(request):
     if request.param == 'zookeeper':
         from .test_zookeeper import deadman_plugin
-        return deadman_plugin()
+        return deadman_plugin(request)
 
 @pytest.fixture
 def pluginAB(plugin):
