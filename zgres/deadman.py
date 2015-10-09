@@ -263,7 +263,6 @@ class App:
         app = App(config)
         timeout = app.initialize()
         if timeout is None:
-            logging.info('Finished Initialization, starting to monitor. I am a {}'.format(self.health_problems))
             return
         app.restart(timeout)
 
