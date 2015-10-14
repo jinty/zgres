@@ -70,6 +70,9 @@ _PLUGIN_API = [
         dict(name='postgresql_initdb',
             required=True,
             type='multiple'),
+        dict(name='postgresql_stop_replication',
+            required=True,
+            type='multiple'),
 
         # create a backup and put it where replicas can get it
         dict(name='postgresql_backup',
@@ -190,41 +193,34 @@ class App:
             self._loop.call_later(600, self._loop.create_task, self._handle_unhealthy_master())
         return None
 
-    def master_locked(self, by_me):
-        self.master_lock = True
-        if by_me:
-            self._plugins.stop_replication()
+    def master_lock_changed(self, owner):
+        """Respond to a change in the maser lock"""
+        self._master_lock_owner = owner
+        if owner == self.my_id:
+            # I should be the master
+            if self._plugins.postgresql_am_i_replica():
+                self._plugins.postgresql_stop_replication()
         else:
             if not self._plugins.postgresql_am_i_replica():
-                # a new master just appeared, it's not me
-                # I'm also a master, er so boom...
-                call.postgresql_stop()
-                self.restart(0)
+                # if I am master, wither the lock was deleted or someone else got it, shut down
+                self.restart(10)
+            if owner is None:
+                self._loop.call_soon(self._loop.create_task, self._try_takeover())
 
-    def master_unlocked(self):
-        """Respond to an event where the master is unlocked"""
-        self.master_lock = False
-        self._loop.call_soon(self._handle_master_unlocked)
+    def am_i_best_replica(self):
+        return True
 
-    async def _handle_master_unlocked(self):
-        if self.master_lock:
-            return
-        if not self._plugins.postgresql_am_i_replica():
-            # we are not a replica, and the master lock was lost. Let's wait a bit for
-            # another slave to takeover and then restart
-            self._plugins.stop_postgresql()
-            self.restart(120)
-        while True:
+    async def _try_takeover(self):
+        while self._master_lock_owner is None:
             # The master is missing and we should decide if we must take over
-            await loop.sleep(self.replication_update_interval * 3) # let replicas update their state
-            if self.master_lock:
-                return
+            await asyncio.sleep(3) # let replicas update their state
             if not self.am_i_best_replica():
-                await loop.sleep(self.replication_update_interval * 10)
+                await asyncio.sleep(10)
                 continue
-            if self._plugins.dcs_lock_master():
-                # the "master_locked" event should stop replication now
-                return
+            # try get the master lock, if this suceeds, master_lock_change will be called again 
+            # and will bring us out of replication
+            self._plugins.dcs_lock('master')
+            return
 
     def unhealthy(self, key, reason, can_be_replica=False):
         """Plugins call this if they want to declare the instance unhealthy.
@@ -249,7 +245,6 @@ class App:
             while self.health_problems:
                 if self._plugins.is_there_willing_replica():
                     # fallover
-                    self._plugins.stop_postgresql()
                     self.restart(120)
                 await loop.sleep(30)
 

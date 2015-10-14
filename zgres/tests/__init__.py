@@ -3,7 +3,7 @@ from asyncio import sleep
 
 class FakeSleeper:
 
-    def __init__(self, loops=1):
+    def __init__(self, loops=None):
         self.log = []
         self.loops = loops
         self.finished = asyncio.Event()
@@ -16,7 +16,7 @@ class FakeSleeper:
 
     async def __call__(self, delay):
         self.log.append(delay)
-        if len(self.log) >= self.loops:
+        if self.loops is not None and len(self.log) >= self.loops:
             self.finished.set()
             await sleep(10000)
             raise AssertionError('boom')

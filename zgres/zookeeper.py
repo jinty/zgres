@@ -193,6 +193,7 @@ class ZooKeeperDeadmanPlugin:
     def __init__(self, name, app):
         self.name = name
         self.app = app
+        self._monitors = {}
 
     def _path(self, type, name=None):
         if name is None:
@@ -251,6 +252,15 @@ class ZooKeeperDeadmanPlugin:
         except kazoo.exceptions.NoNodeError:
             return None
         return dbid.decode('ascii')
+
+    def start_monitoring(self):
+        path = self._lock_path('master')
+        self._monitors['master_lock_watch'] = self._zk.DataWatch(path, self._master_lock_changes)
+
+    def _master_lock_changes(self, data, stat, event):
+        if data is not None:
+            data = data.decode('utf-8')
+        self._loop.call_soon_threadsafe(self.app.master_lock_changed, data)
 
     def dcs_lock(self, name):
         path = self._lock_path(name)

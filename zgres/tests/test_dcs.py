@@ -1,4 +1,7 @@
 """Abstract tests for all DCS plugins"""
+import asyncio
+from unittest import mock
+
 import pytest
 
 @pytest.fixture(params=['zookeeper'])
@@ -100,3 +103,36 @@ def test_info_is_ephemeral(plugin):
     assert pluginA2.dcs_get_info('conn') == dict(server='A')
     pluginA.dcs_disconnect()
     assert pluginA2.dcs_get_info('conn') == None
+
+@pytest.mark.asyncio
+async def test_master_lock_notification(plugin):
+    pluginA, pluginB = plugin('A'), plugin('B')
+    pluginB.start_monitoring() # None
+    await asyncio.sleep(0.001)
+    pluginA.dcs_lock('master') # A
+    await asyncio.sleep(0.001)
+    pluginA.dcs_lock('master') # no-op
+    await asyncio.sleep(0.001)
+    pluginA.dcs_unlock('master') # None
+    await asyncio.sleep(0.001)
+    pluginA.dcs_unlock('master') # no-op
+    await asyncio.sleep(0.001)
+    pluginA.dcs_lock('master') # A
+    await asyncio.sleep(0.001)
+    pluginA.dcs_unlock('master') # None
+    await asyncio.sleep(0.001)
+    pluginB.dcs_lock('master') # B
+    await asyncio.sleep(0.001)
+    pluginB.dcs_unlock('master') # None
+    await asyncio.sleep(0.001)
+    # just a sanity check that these really go through the DCS
+    assert pluginB.app is not pluginA.app
+    assert pluginB.app.master_lock_changed.mock_calls == [
+            mock.call(None),
+            mock.call('A'),
+            mock.call(None),
+            mock.call('A'),
+            mock.call(None),
+            mock.call('B'),
+            mock.call(None),
+            ]

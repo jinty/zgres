@@ -60,6 +60,7 @@ def deadman_plugin(request):
                     path='/mypath',
                     group='mygroup',
                     ))
+        app.master_lock_changed._is_coroutine = False # otherwise tests fail :(
         from ..zookeeper import ZooKeeperDeadmanPlugin
         plugin = ZooKeeperDeadmanPlugin('zgres#zookeeper', app)
         zk = FakeClient(storage=storage)
