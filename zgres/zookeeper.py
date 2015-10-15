@@ -289,7 +289,7 @@ class ZooKeeperDeadmanPlugin:
             return None
         return owner.decode('utf-8')
 
-    def dcs_set_info(self, type, data):
+    def _set_info(self, type, data):
         data = json.dumps(data)
         data = data.encode('ascii')
         try:
@@ -297,18 +297,42 @@ class ZooKeeperDeadmanPlugin:
         except kazoo.exceptions.NoNodeError:
             self._zk.create(self._path(type), data, ephemeral=True, makepath=True)
 
-    def dcs_get_info(self, type):
-        try:
-            data, stat = self._zk.get(self._path(type))
-        except kazoo.exceptions.NoNodeError:
-            return None
-        return json.loads(data.decode('ascii'))
+    def dcs_set_conn(self, data):
+        return self._set_info('conn', data)
 
-    def dcs_delete_info(self, type):
+    def dcs_set_state(self, data):
+        return self._set_info('state', data)
+
+    def _get_all_info(self, type):
+        dirpath = self._path_prefix + type
+        try:
+            children = self._zk.get_children(dirpath, include_data=True)
+        except kazoo.exceptions.NoNodeError:
+            return iter([])
+        for name, data in children:
+            if not name.startswith(self._group_name + '-'):
+                continue
+            data = data['data']
+            state = json.loads(data.decode('ascii')) 
+            yield name[len(self._group_name + '-'):], state
+    
+    def dcs_get_all_conn(self):
+        return self._get_all_info('conn')
+
+    def dcs_get_all_state(self):
+        return self._get_all_info('state')
+
+    def _delete_info(self, type):
         try:
             self._zk.delete(self._path(type))
         except kazoo.exceptions.NoNodeError:
             pass
+    
+    def dcs_delete_conn(self):
+        return self._delete_info('conn')
+
+    def dcs_delete_state(self):
+        return self._get_all_info('state')
 
     def dcs_disconnect(self):
         # for testing only

@@ -37,15 +37,25 @@ _PLUGIN_API = [
             required=True,
             type='multiple'),
 
-        dict(name='dcs_delete_info',
+        dict(name='dcs_delete_state',
             required=True,
             type='multiple'),
-        dict(name='dcs_set_info',
+        dict(name='dcs_set_state',
             required=True,
             type='multiple'),
-        dict(name='dcs_get_info',
+        dict(name='dcs_get_all_state',
+            required=True,
+            type='single'),
+
+        dict(name='dcs_delete_conn',
             required=True,
             type='multiple'),
+        dict(name='dcs_set_conn',
+            required=True,
+            type='multiple'),
+        dict(name='dcs_get_all_conn',
+            required=True,
+            type='single'),
 
         dict(name='dcs_disconnect',
             required=True,
@@ -95,6 +105,17 @@ _PLUGIN_API = [
             required=True,
             type='multiple'),
         ]
+
+def wal_sort_key(state):
+    if state['pg_is_in_recovery']:
+        master_before_replica = 1
+    else:
+        master_before_replica = 0
+    wal_replay_position = state.get('pg_last_xlog_replay_location', '0/0')
+    wal_replay_position = -utils.pg_lsn_to_int(wal_replay_position)
+    wal_recieve_position = state.get('pg_last_xlog_receive_location', '0/0')
+    wal_recieve_position = -utils.pg_lsn_to_int(wal_recieve_position)
+    return (master_before_replica, -wal_recieve_position, -wal_replay_position)
 
 class App:
 
@@ -216,19 +237,35 @@ class App:
                 self._loop.call_soon(self._loop.create_task, self._try_takeover())
 
     def am_i_best_replica(self):
-        return True
+        nodes = [(wal_sort_key(state), id, state) for id, state in self._plugins.dcs_get_all_state()]
+        nodes.sort()
+        print(nodes)
+        best_key = None
+        for sort_key, id, state in nodes:
+            if not state['willing_replica'] and state['pg_is_in_recovery']:
+                continue
+            if best_key is None:
+                best_key = sort_key
+            if sort_key != best_key:
+                continue
+            if id == self.my_id:
+                # perform final check to see if I am willing
+                if state['pg_last_xlog_replay_location'] != state['pg_last_xlog_receive_location']:
+                    self.logger.info('I have recieved the most logs, but not replayed them all yet, waiting a bit')
+                    return False
+                return True
+        return False
 
     async def _try_takeover(self):
-        while self._master_lock_owner is None:
-            # The master is missing and we should decide if we must take over
+        while True:
             await asyncio.sleep(3) # let replicas update their state
-            if not self.am_i_best_replica():
-                await asyncio.sleep(10)
-                continue
-            # try get the master lock, if this suceeds, master_lock_change will be called again 
-            # and will bring us out of replication
-            self._plugins.dcs_lock('master')
-            return
+            # The master is still missing and we should decide if we must take over
+            if self._master_lock_owner is not None:
+                break
+            if self.am_i_best_replica():
+                # try get the master lock, if this suceeds, master_lock_change will be called again
+                # and will bring us out of replication
+                self._plugins.dcs_lock('master')
 
     def unhealthy(self, key, reason, can_be_replica=False):
         """Plugins call this if they want to declare the instance unhealthy.
@@ -271,7 +308,10 @@ class App:
                 if not locked:
                     # for some reason we cannot lock the master, restart and try again
                     self.restart(60) # give the
-            self._plugins.dcs_set_info('conn', self._conn_info)
+            self._set_conn_info()
+
+    def _set_conn_info(self):
+        self._plugins.dcs_set_conn(self._conn_info)
 
     @classmethod
     def run(cls, config):

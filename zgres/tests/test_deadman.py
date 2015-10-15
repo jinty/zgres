@@ -5,6 +5,22 @@ import pytest
 
 from . import FakeSleeper
 
+def mock_state(replica=False, **kw):
+    if replica:
+        defaults = dict(
+                willing_replica=True,
+                pg_is_in_recovery=True,
+                pg_last_xlog_replay_location='68A/16E1DA8',
+                pg_last_xlog_receive_location='68A/16E1DA8')
+    else:
+        defaults = dict(
+                willing_replica=False,
+                pg_is_in_recovery=False,
+                pg_last_xlog_replay_location=None,
+                pg_last_xlog_receive_location=None)
+    defaults.update(kw)
+    return defaults
+
 @pytest.fixture
 def app():
     from ..deadman import App, _PLUGIN_API
@@ -16,9 +32,13 @@ def app():
 
 def setup_plugins(plugins, **kw):
     from ..deadman import _PLUGIN_API
+    get_my_id = kw.get('get_my_id', '42')
     postgresql_am_i_replica = kw.get('postgresql_am_i_replica', True)
+    mystate = mock_state(replica=postgresql_am_i_replica)
     defaults = {
             'postgresql_am_i_replica': postgresql_am_i_replica,
+            'dcs_get_all_state': [(get_my_id, mystate)],
+            'get_my_id': get_my_id,
             'dcs_get_database_identifier': '12345',
             'postgresql_get_database_identifier': '12345',
             }
@@ -149,8 +169,8 @@ async def test_master_start(app):
     assert plugins.mock_calls ==  [
             call.postgresql_am_i_replica(),
             call.dcs_lock('master'),
-            call.dcs_set_info('conn', {}),
-           ] 
+            call.dcs_set_conn({}),
+           ]
 
 def test_replica_start(app):
     app, plugins = app
@@ -187,8 +207,8 @@ def test_replica_start(app):
     app.healthy('test_monitor')
     assert plugins.mock_calls ==  [
             call.postgresql_am_i_replica(),
-            call.dcs_set_info('conn', {'a': 'b'}),
-           ] 
+            call.dcs_set_conn({'a': 'b'}),
+           ]
 
 def test_restart_master(app):
     app, plugins = app
@@ -307,6 +327,12 @@ async def test_replica_tries_to_take_over(app):
     with patch('asyncio.sleep') as sleep:
         sleeper = FakeSleeper()
         sleep.side_effect = sleeper
-        await real_sleep(0.001)
+        # the first thing is to sleep a bit
+        await sleeper.next()
         assert sleeper.log == [3]
-    assert app._plugins.mock_calls ==  [call.dcs_lock('master')]
+        # takeover attempted
+        await sleeper.next()
+        assert sleeper.log == [3, 3]
+        assert app._plugins.mock_calls ==  [
+                call.dcs_get_all_state(),
+                call.dcs_lock('master')]

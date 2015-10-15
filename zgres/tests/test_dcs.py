@@ -78,31 +78,32 @@ def test_dont_unlock_others(pluginAB):
     pluginB.dcs_unlock('mylock')
     assert pluginB.dcs_lock('mylock') == False
 
-def test_set_delete_info(pluginAB):
+def test_set_delete_conn(pluginAB):
     pluginA, pluginB = pluginAB
-    pluginA.dcs_set_info('conn', dict(server='A'))
-    assert pluginA.dcs_get_info('conn') == dict(server='A')
-    pluginA.dcs_set_info('conn', dict(server='B'))
-    assert pluginA.dcs_get_info('conn') == dict(server='B')
-    assert pluginB.dcs_get_info('conn') == None
-    assert pluginA.dcs_get_info('another') == None
-    pluginA.dcs_delete_info('conn')
-    assert pluginA.dcs_get_info('conn') == None
+    pluginA.dcs_set_conn(dict(answer=42))
+    assert sorted(pluginA.dcs_get_all_conn()) == [('A', dict(answer=42))]
+    pluginB.dcs_set_conn(dict(answer='X'))
+    assert sorted(pluginA.dcs_get_all_conn()) == [('A', dict(answer=42)), ('B', dict(answer='X'))]
+    assert sorted(pluginB.dcs_get_all_conn()) == [('A', dict(answer=42)), ('B', dict(answer='X'))]
+    assert sorted(pluginA.dcs_get_all_state()) == []
+    pluginA.dcs_delete_conn()
+    assert sorted(pluginB.dcs_get_all_conn()) == [('B', dict(answer='X'))]
 
 def test_set_delete_info_is_idempotent(plugin):
     plugin = plugin()
-    plugin.dcs_delete_info('conn')
-    plugin.dcs_delete_info('conn')
+    plugin.dcs_set_conn(dict(server=42))
+    plugin.dcs_delete_conn()
+    plugin.dcs_delete_conn()
 
 def test_info_is_ephemeral(plugin):
     # 2 servers with the same id should NOT happen in real life...
     pluginA = plugin(my_id='A')
     pluginA2 = plugin(my_id='A')
-    pluginA.dcs_set_info('conn', dict(server='A'))
-    assert pluginA.dcs_get_info('conn') == dict(server='A')
-    assert pluginA2.dcs_get_info('conn') == dict(server='A')
+    pluginA.dcs_set_conn(dict(server=42))
+    assert sorted(pluginA.dcs_get_all_conn()) == [('A', dict(server=42))]
+    assert sorted(pluginA2.dcs_get_all_conn()) == [('A', dict(server=42))]
     pluginA.dcs_disconnect()
-    assert pluginA2.dcs_get_info('conn') == None
+    assert sorted(pluginA2.dcs_get_all_conn()) == []
 
 @pytest.mark.asyncio
 async def test_master_lock_notification(plugin):
