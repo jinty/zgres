@@ -80,7 +80,7 @@ async def test_session_suspended(deadman_plugin):
     await asyncio.sleep(0.001)
     plugin.app.reset_mock()
     with mock.patch('asyncio.sleep') as sleep:
-        sleeper = FakeSleeper(loops=2)
+        sleeper = FakeSleeper(max_loops=2)
         sleep.side_effect = sleeper
         plugin.app.unhealthy.side_effect = lambda *a, **kw: sleeper.finished.set()
         # suspend the connection
@@ -101,15 +101,15 @@ async def test_session_suspended_but_reconnects(deadman_plugin):
     await asyncio.sleep(0.001)
     plugin.app.reset_mock()
     with mock.patch('asyncio.sleep') as sleep:
-        sleeper = FakeSleeper(loops=2)
+        sleeper = FakeSleeper()
         sleep.side_effect = sleeper
-        plugin.app.unhealthy.side_effect = lambda *a, **kw: sleeper.finished.set()
         # suspend the connection
         plugin._zk._fire_state_change(KazooState.SUSPENDED)
         plugin._zk.state = KazooState.CONNECTED
-        await sleeper.wait()
-        assert plugin.app.mock_calls == []
+        await sleeper.next()
         assert sleeper.log == [plugin.tick_time]
+    await asyncio.sleep(0.001)
+    assert plugin.app.mock_calls == []
 
 @pytest.mark.asyncio
 async def test_session_lost(deadman_plugin):

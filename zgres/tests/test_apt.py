@@ -28,7 +28,7 @@ async def test_monitoring(plugin):
                 0, # become healthy
                 ]
         subprocess_call.side_effect = retvals
-        sleeper = FakeSleeper(loops=len(retvals) + 1)
+        sleeper = FakeSleeper(max_loops=len(retvals) + 1)
         sleep.side_effect = sleeper
         plugin.start_monitoring()
         await sleeper.wait()
