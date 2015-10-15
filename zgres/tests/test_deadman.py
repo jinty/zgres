@@ -106,6 +106,7 @@ def test_replica_bootstrap(app):
             call.postgresql_stop(),
             # postgresql restore
             call.postgresql_restore(),
+            call.postgresql_am_i_replica()
             ]
     # shut down cleanly and immediately
     assert timeout == 0

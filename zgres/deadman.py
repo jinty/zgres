@@ -66,6 +66,11 @@ _PLUGIN_API = [
         dict(name='postgresql_start',
             required=True,
             type='multiple'),
+        # halt: should irreperably stop postgresql from running again
+        # either stop the whole machine, move data directory
+        dict(name='postgresql_halt',
+            required=True,
+            type='multiple'),
         # create a new postgresql database
         dict(name='postgresql_initdb',
             required=True,
@@ -117,6 +122,9 @@ class App:
     def replica_bootstrap(self):
         self._plugins.postgresql_stop()
         self._plugins.postgresql_restore()
+        if not self._plugins.postgresql_am_i_replica():
+            # destroy ourselves
+            self._plugins.postgresql_halt()
         return 0
 
     def master_bootstrap(self):
