@@ -208,10 +208,8 @@ class App:
                 self._plugins.postgresql_stop()
                 our_xlog_location = utils.pg_lsn_to_int(self._plugins.postgresql_state()['pg_current_xlog_location'])
                 for id, state in self._plugins.dcs_get_all_state():
-                    print(state)
                     if state['pg_is_in_recovery']:
                         continue
-                    print(our_xlog_location, utils.pg_lsn_to_int(state['pg_current_xlog_location']))
                     if our_xlog_location >= utils.pg_lsn_to_int(state['pg_current_xlog_location']):
                         continue
                     self.logger.info('I could not get the master lock and the new master is moving ahead. Goodbye cruel world...')
