@@ -76,24 +76,27 @@ _PLUGIN_API = [
         dict(name='postgresql_start',
             required=True,
             type='multiple'),
-        # halt: should irreperably stop postgresql from running again
-        # either stop the whole machine, move data directory
-        dict(name='postgresql_halt',
+        # halt: should prevent the existing database from running again.
+        # either stop the whole machine, move data directory aside, pg_rewind or prepare for re-bootstrapping as a slave
+        dict(name='postgresql_reset',
             required=True,
             type='multiple'),
         # create a new postgresql database
         dict(name='postgresql_initdb',
             required=True,
             type='multiple'),
-        dict(name='postgresql_stop_replication',
+        dict(name='postgresql_stop_replication', # implement
             required=True,
             type='multiple'),
+        dict(name='postgresql_state',
+            required=True,
+            type='single'),
 
         # create a backup and put it where replicas can get it
         dict(name='postgresql_backup',
             required=True,
             type='multiple'),
-        dict(name='postgresql_restore',
+        dict(name='postgresql_restore', # XXX -setup replication
             required=True,
             type='multiple'),
         dict(name='postgresql_am_i_replica',
@@ -144,8 +147,10 @@ class App:
         self._plugins.postgresql_stop()
         self._plugins.postgresql_restore()
         if not self._plugins.postgresql_am_i_replica():
-            # destroy ourselves
-            self._plugins.postgresql_halt()
+            # destroy our current cluster
+            self._plugins.postgresql_reset()
+            logging.error("Something is seriously wrong: after restoring postgresql was NOT setup as a replica.")
+            return 5
         return 0
 
     def master_bootstrap(self):
@@ -201,12 +206,18 @@ class App:
             self.logger.info('I am NOT a replica, trying to get the master lock')
             if not self._plugins.dcs_lock('master'):
                 self._plugins.postgresql_stop()
-                if self.is_master_ahead():
+                our_xlog_location = utils.pg_lsn_to_int(self._plugins.postgresql_state()['pg_current_xlog_location'])
+                for id, state in self._plugins.dcs_get_all_state():
+                    print(state)
+                    if state['pg_is_in_recovery']:
+                        continue
+                    print(our_xlog_location, utils.pg_lsn_to_int(state['pg_current_xlog_location']))
+                    if our_xlog_location >= utils.pg_lsn_to_int(state['pg_current_xlog_location']):
+                        continue
                     self.logger.info('I could not get the master lock and the new master is moving ahead. Goodbye cruel world...')
                     # there is already another master and it has moved ahead of us
-                    self._plugins.halt() # should irreperably stop postgresql from running again
-                                         # either stop the whole machine, move data directory
-                    return 60
+                    self._plugins.postgresql_reset()
+                    return 5
                 self.logger.info('I could not get the master lock, but the master has not moved ahead of me (new master not functioning?) will try again in a bit')
                 return 60
         self.logger.info('Making sure postgresql is running')

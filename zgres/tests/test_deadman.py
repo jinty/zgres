@@ -16,8 +16,7 @@ def mock_state(replica=False, **kw):
         defaults = dict(
                 willing_replica=False,
                 pg_is_in_recovery=False,
-                pg_last_xlog_replay_location=None,
-                pg_last_xlog_receive_location=None)
+                pg_current_xlog_location='68A/16E1DA8')
     defaults.update(kw)
     return defaults
 
@@ -39,6 +38,7 @@ def setup_plugins(plugins, **kw):
             'postgresql_am_i_replica': postgresql_am_i_replica,
             'dcs_get_all_state': [(get_my_id, mystate)],
             'get_my_id': get_my_id,
+            'postgresql_state': mystate,
             'dcs_get_database_identifier': '12345',
             'postgresql_get_database_identifier': '12345',
             }
@@ -131,6 +131,30 @@ def test_replica_bootstrap(app):
     # shut down cleanly and immediately
     assert timeout == 0
 
+def test_replica_bootstrap_fails_sanity_test(app):
+    app, plugins = app
+    setup_plugins(
+            plugins,
+            postgresql_am_i_replica=False,
+            dcs_get_database_identifier='1234',
+            postgresql_get_database_identifier='42')
+    timeout = app.initialize()
+    assert app._plugins.mock_calls ==  [
+            call.initialize(),
+            call.get_my_id(),
+            # compare our id with the id in the DCS
+            call.dcs_get_database_identifier(),
+            call.postgresql_get_database_identifier(),
+            # make sure postgresql is stopped
+            call.postgresql_stop(),
+            # postgresql restore
+            call.postgresql_restore(),
+            call.postgresql_am_i_replica(),
+            call.postgresql_reset(),
+            ]
+    # shut down after 5 seconds to try again
+    assert timeout == 5
+
 @pytest.mark.asyncio
 async def test_master_start(app):
     app, plugins = app
@@ -171,6 +195,35 @@ async def test_master_start(app):
             call.dcs_lock('master'),
             call.dcs_set_conn({}),
            ]
+
+def test_failed_over_master_start(app):
+    # A master has failed over and restarted, another master has sucessfully advanced
+    app, plugins = app
+    setup_plugins(
+            plugins,
+            dcs_lock=False,
+            dcs_get_all_state=[('a better master', mock_state(replica=False, pg_current_xlog_location='68B/0000000'))],
+            postgresql_am_i_replica=False)
+    # sync startup
+    timeout = app.initialize()
+    assert plugins.mock_calls ==  [
+            call.initialize(),
+            call.get_my_id(),
+            # compare our id with the id in the DCS
+            call.dcs_get_database_identifier(),
+            call.postgresql_get_database_identifier(),
+            # check if I am a replica
+            call.postgresql_am_i_replica(),
+            # no, so check if there is a master
+            call.dcs_lock('master'),
+            call.postgresql_stop(),
+            # compare our xlog location to what's in the 
+            call.postgresql_state(),
+            call.dcs_get_all_state(),
+            call.postgresql_reset(),
+            ]
+    # Carry on running afterwards
+    assert timeout == 5
 
 def test_replica_start(app):
     app, plugins = app
