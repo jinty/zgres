@@ -8,10 +8,7 @@ import psycopg2
 
 from subprocess import check_call
 
-def _integer_wal_pos(pos):
-    # see http://eulerto.blogspot.com.es/2011/11/understanding-wal-nomenclature.html
-    logfile, offset = pos.split('/')
-    return 0xFF000000 * int(logfile, 16) + int(offset, 16)
+from .utils import pg_lsn_to_int
 
 class Ec2SnapshotBackupPlugin:
 
@@ -86,7 +83,7 @@ class Ec2SnapshotBackupPlugin:
             l = snapshots.setdefault(wal_pos, [])
             l.append(snapshot)
         # now order and discard those which do not have all devices
-        snapshots = sorted(snapshots.items(), key=lambda x: _integer_wal_pos(x[0]))
+        snapshots = sorted(snapshots.items(), key=lambda x: pg_lsn_to_int(x[0]))
         result = []
         wanted_snaps = set(self._devices)
         for wal_pos, unorderd_snaps in snapshots:
