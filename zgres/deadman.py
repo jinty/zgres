@@ -115,6 +115,12 @@ _PLUGIN_API = [
         dict(name='start_monitoring',
             required=True,
             type='multiple'),
+
+        # extra keys for "conn" information provided by plugins
+        # at least the one plugin must provde this so that application servers can connect
+        dict(name='get_conn_info',
+            required=True,
+            type='multiple'),
         ]
 
 def wal_sort_key(state):
@@ -138,10 +144,10 @@ class App:
 
     def __init__(self, config):
         self.health_problems = {}
-        self._conn_info = {}
         self._state = {}
         self.config = config
         self.tick_time = config['deadman'].get('tick_time', 2) # float seconds to scale all timeouts
+        self._conn_info = {} # TODO: populate from config file
         self._setup_plugins()
         self.logger = logging
 
@@ -227,6 +233,7 @@ class App:
         self._plugins.pg_start()
         self.logger.info('Starting monitors')
         self._plugins.start_monitoring()
+        self._get_conn_info_from_plugins()
         self.healthy('zgres.initialize')
         if self.health_problems:
             if not am_replica:
@@ -237,9 +244,25 @@ class App:
                 self._loop.call_later(300 * self.tick_time, self._loop.create_task, self._handle_unhealthy_master())
         return None
 
+    def _get_conn_info_from_plugins(self):
+        sources = dict((k, None) for k in self._conn_info)
+        for plugin_name, info in self._plugins.get_conn_info():
+            for k, v in info.items():
+                source = sources.get(k, _missing)
+                if source is None:
+                    self.logger.info('plugin ({}) overriding connection info for {} set in config file, set to: {}'.format(plugin_name, k, v))
+                elif source is not _missing:
+                    self.logger.info('plugin ({}) overriding connection info for {} set by another plugin ({}), set to: {}'.format(plugin_name, k, source, v))
+                sources[k] = plugin_name
+                self._conn_info[k] = v
+        self._state.update(deepcopy(self._conn_info))
+
     def update_state(self, _force=False, **kw):
         changed = _force
         for k, v in kw.items():
+            if k in self._conn_info:
+                self.logger.warn('Cannot set state for {}={}, key {} has already been set in the connection info'.format(k, v, k))
+                continue
             v = deepcopy(v) # for reliable change detection on mutable args
             existing = self._state.get(k, _missing)
             if v != existing:

@@ -41,6 +41,7 @@ def setup_plugins(app, **kw):
             'dcs_get_all_state': [(get_my_id, mystate)],
             'pg_get_timeline': 1,
             'dcs_get_timeline': 1,
+            'get_conn_info': [('database', dict(host='127.0.0.1'))],
             'get_my_id': get_my_id,
             'dcs_get_database_identifier': '12345',
             'pg_get_database_identifier': '12345',
@@ -177,9 +178,11 @@ async def test_master_start(app):
             call.pg_start(),
             # start monitoring
             call.start_monitoring(),
+            call.get_conn_info(),
             # set our first state
-            call.dcs_set_state({'health_problems':
-                {'test_monitor':
+            call.dcs_set_state({
+                'host': '127.0.0.1',
+                'health_problems': {'test_monitor':
                     {'can_be_replica': False, 'reason': 'Waiting for first check'}}})
             ]
     # Carry on running afterwards
@@ -189,10 +192,12 @@ async def test_master_start(app):
     plugins.reset_mock()
     app.healthy('test_monitor')
     assert plugins.mock_calls ==  [
-            call.dcs_set_state({'health_problems': {}}),
+            call.dcs_set_state({
+                'host': '127.0.0.1',
+                'health_problems': {}}),
             call.pg_am_i_replica(),
             call.dcs_lock('master'),
-            call.dcs_set_conn({}),
+            call.dcs_set_conn({'host': '127.0.0.1'}),
            ]
 
 def test_failed_over_master_start(app):
@@ -248,10 +253,15 @@ def test_replica_start(app):
             call.pg_start(),
             # start monitoring
             call.start_monitoring(),
+            # setup our connection info
+            call.get_conn_info(),
             # set our first state
-            call.dcs_set_state({'health_problems':
-                {'test_monitor':
-                    {'can_be_replica': False, 'reason': 'Waiting for first check'}}})
+            call.dcs_set_state({
+                'a': 'b',
+                'host': '127.0.0.1',
+                'health_problems': {'test_monitor':
+                    {'can_be_replica': False, 'reason': 'Waiting for first check'}},
+                })
             ]
     # Carry on running afterwards
     assert timeout == None
@@ -260,9 +270,12 @@ def test_replica_start(app):
     plugins.reset_mock()
     app.healthy('test_monitor')
     assert plugins.mock_calls ==  [
-            call.dcs_set_state({'health_problems': {}}),
+            call.dcs_set_state({'health_problems': {},
+                'a': 'b',
+                'host': '127.0.0.1',
+                }),
             call.pg_am_i_replica(),
-            call.dcs_set_conn({'a': 'b'}),
+            call.dcs_set_conn({'a': 'b', 'host': '127.0.0.1'}),
            ]
 
 def test_restart_master(app):
