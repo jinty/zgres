@@ -6,7 +6,7 @@ import asyncio
 import logging
 import argparse
 
-import zgres._plugin
+import zgres.plugin
 import zgres.config
 from zgres import utils
 
@@ -152,7 +152,7 @@ class App:
         self.logger = logging
 
     def _setup_plugins(self):
-        self._plugins = zgres._plugin.get_plugins(
+        self._plugins = zgres.plugin.get_plugins(
                 self.config,
                 'deadman',
                 _PLUGIN_API,

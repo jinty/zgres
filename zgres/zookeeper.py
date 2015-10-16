@@ -7,6 +7,8 @@ from collections.abc import Mapping
 import kazoo.exceptions
 from kazoo.client import KazooClient, KazooState
 
+from .plugin import subscribe
+
 def state_to_databases(state, get_state):
     """Convert the state to a dict of connectable database clusters.
 
@@ -167,6 +169,7 @@ class ZooKeeperSource:
     def __init__(self, name, app):
         self.app = app
 
+    @subscribe
     def start_watching(self):
         self.zk = KazooClient(hosts=self.app.config['sync']['zookeeper']['connection_string'])
         self.zk.start()
@@ -206,6 +209,7 @@ class ZooKeeperDeadmanPlugin:
     def _lock_path(self, name):
         return self._path('lock', name)
 
+    @subscribe
     def initialize(self):
         self._loop = asyncio.get_event_loop()
         self._zk = KazooClient(hosts=self.app.config['zookeeper']['connection_string'])
@@ -238,6 +242,7 @@ class ZooKeeperDeadmanPlugin:
         else:
             self.app.healthy(unhealthy_key)
 
+    @subscribe
     def dcs_set_database_identifier(self, database_id):
         database_id = database_id.encode('ascii')
         try:
@@ -246,6 +251,7 @@ class ZooKeeperDeadmanPlugin:
             return False
         return True
 
+    @subscribe
     def dcs_get_database_identifier(self):
         try:
             dbid, stat = self._zk.get(self._db_id_path())
@@ -253,6 +259,7 @@ class ZooKeeperDeadmanPlugin:
             return None
         return dbid.decode('ascii')
 
+    @subscribe
     def start_monitoring(self):
         path = self._lock_path('master')
         self._monitors['master_lock_watch'] = self._zk.DataWatch(path, self._master_lock_changes)
@@ -262,6 +269,7 @@ class ZooKeeperDeadmanPlugin:
             data = data.decode('utf-8')
         self._loop.call_soon_threadsafe(self.app.master_lock_changed, data)
 
+    @subscribe
     def dcs_lock(self, name):
         path = self._lock_path(name)
         try:
@@ -277,11 +285,13 @@ class ZooKeeperDeadmanPlugin:
             return True
         return False
 
+    @subscribe
     def dcs_unlock(self, name):
         owner = self.dcs_get_lock_owner(name)
         if owner == self.app.my_id:
             self._zk.delete(self._lock_path(name))
 
+    @subscribe
     def dcs_get_lock_owner(self, name):
         try:
             owner, stat = self._zk.get(self._lock_path(name))
@@ -297,9 +307,11 @@ class ZooKeeperDeadmanPlugin:
         except kazoo.exceptions.NoNodeError:
             self._zk.create(self._path(type), data, ephemeral=True, makepath=True)
 
+    @subscribe
     def dcs_set_conn(self, data):
         return self._set_info('conn', data)
 
+    @subscribe
     def dcs_set_state(self, data):
         return self._set_info('state', data)
 
@@ -316,9 +328,11 @@ class ZooKeeperDeadmanPlugin:
             state = json.loads(data.decode('ascii')) 
             yield name[len(self._group_name + '-'):], state
     
+    @subscribe
     def dcs_get_all_conn(self):
         return self._get_all_info('conn')
 
+    @subscribe
     def dcs_get_all_state(self):
         return self._get_all_info('state')
 
@@ -328,12 +342,15 @@ class ZooKeeperDeadmanPlugin:
         except kazoo.exceptions.NoNodeError:
             pass
     
+    @subscribe
     def dcs_delete_conn(self):
         return self._delete_info('conn')
 
+    @subscribe
     def dcs_delete_state(self):
         return self._get_all_info('state')
 
+    @subscribe
     def dcs_disconnect(self):
         # for testing only
         self._zk.remove_listener(self._session_state_threadsafe)

@@ -2,6 +2,13 @@
 import logging
 from pkg_resources import iter_entry_points
 
+_missing = object()
+
+def subscribe(func):
+    """Mark a method as a zgres subscriber"""
+    func._zgres_subscriber = True
+    return func
+
 def load(config, section):
     """Gets the plugin factories from the config file.
 
@@ -57,6 +64,7 @@ def get_event_handler(setup_plugins, events, logger=logging):
     logger.info('Loading Plugins')
     class Handler:
         plugins = dict(setup_plugins)
+    event_names = set([])
     for event_name in events:
         if isinstance(event_name, dict):
             spec = event_name
@@ -64,10 +72,15 @@ def get_event_handler(setup_plugins, events, logger=logging):
         else:
             spec = dict(type='multiple',
                     required=False)
+        assert not event_name.startswith('_')
+        event_names.add(event_name)
         handlers = []
         for name, plugin in setup_plugins:
             handler = getattr(plugin, event_name, None)
             if handler is None:
+                continue
+            if not getattr(handler, '_zgres_subscriber', False):
+                logger.debug('skiping method {} on plugin {} as it is not marked as a subscriber with @subscribe'.format(event_name, plugin))
                 continue
             handlers.append((name, event_name, handler))
         logger.info("loading event subscribers for {}: {}".format(event_name, ','.join([name for name, _, _ in handlers])))
@@ -82,6 +95,16 @@ def get_event_handler(setup_plugins, events, logger=logging):
         else:
             raise NotImplementedError('unknown event spec type')
         setattr(Handler, event_name, executor)
+    for name, plugin in setup_plugins:
+        for attr in dir(plugin):
+            if attr in event_names:
+                continue
+            if attr.startswith('_'):
+                continue
+            val = getattr(plugin, attr)
+            subscriber = getattr(val, '_zgres_subscriber', _missing)
+            if subscriber is not _missing:
+                raise AssertionError('plugin {} has a subscriber I dont recognise: {}'.format(name, attr))
     return Handler()
 
 def get_plugins(config, section, events, *plugin_config_args, **plugin_config_kw):

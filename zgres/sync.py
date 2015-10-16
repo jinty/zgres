@@ -2,7 +2,7 @@ import os
 import sys
 import argparse
 
-import zgres._plugin
+import zgres.plugin
 import zgres.config
 from zgres import utils
 
@@ -26,7 +26,7 @@ class SyncApp:
 
     def __init__(self, config):
         self.config = config
-        self._plugins = zgres._plugin.get_plugins(config, 'sync', ['state', 'conn_info', dict(name='start_watching', required=True, type='single')], self)
+        self._plugins = zgres.plugin.get_plugins(config, 'sync', ['state', 'conn_info', dict(name='start_watching', required=True, type='single')], self)
         if self._plugins.state is None and self._plugins.conn_info is None:
             raise Exception('No plugins configured for zgres-sync')
         if self._plugins.state is None:

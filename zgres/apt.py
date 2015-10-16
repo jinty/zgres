@@ -6,6 +6,7 @@ import logging
 from subprocess import check_output, call, check_call
 
 from . import systemd
+from .plugin import subscribe
 
 class AptPostgresqlPlugin:
     """Plugin for controlling postgresql installed by apt.
@@ -83,6 +84,7 @@ class AptPostgresqlPlugin:
             v = v.strip()
             self._set_conf_value(k, v)
 
+    @subscribe
     def pg_get_database_identifier(self):
         if not os.path.exists(self._config_file()):
             return None
@@ -97,13 +99,16 @@ class AptPostgresqlPlugin:
                 return dbid
         return None
 
+    @subscribe
     def pg_start(self):
         self._set_config_values()
         check_call(['systemctl', 'start', self._service()])
 
+    @subscribe
     def pg_stop(self):
         check_call(['systemctl', 'stop', self._service()])
 
+    @subscribe
     def pg_initdb(self):
         if os.path.exists(self._config_file()):
             self.pg_stop()
@@ -116,12 +121,15 @@ class AptPostgresqlPlugin:
             check_call(['sudo', '-u', 'postgres', 'createuser', '-s', '-h', self._socket_dir(), '-p', self._port(), self._superuser_connect_as])
             self.pg_stop()
 
+    @subscribe
     def pg_connect_info(self):
         return dict(database='postgres', user=self._superuser_connect_as, host=self._socket_dir(), port=self._port())
 
+    @subscribe
     def pg_am_i_replica(self):
         return os.path.exists(os.path.join(self._data_dir(), 'recovery.conf'))
 
+    @subscribe
     def start_monitoring(self):
         self.app.unhealthy(self._health_check_key, 'Waiting for first systemd check')
         loop = asyncio.get_event_loop()

@@ -3,7 +3,7 @@ from configparser import ConfigParser
 
 import pytest
 
-from .._plugin import *
+from ..plugin import *
 
 class Plugin1:
 
@@ -11,9 +11,12 @@ class Plugin1:
         self.log = log
         self.name = name
 
+    @subscribe
     def event(self, arg1):
         self.log.append((self.name, 'event', arg1))
 
+    def other_event(self, arg1, arg2):
+        Exception('This event is NOT subscribed, so should never be executed')
 
 class Plugin2:
 
@@ -21,10 +24,12 @@ class Plugin2:
         self.log = log
         self.name = name
 
+    @subscribe
     def event(self, arg1):
         self.log.append((self.name, 'event', arg1))
         return arg1 + '-ho'
 
+    @subscribe
     def other_event(self, arg1, arg2):
         self.log.append((self.name, 'other_event', arg1, arg2))
         return arg1 + arg2
@@ -48,7 +53,7 @@ def test_real_plugins():
     from zgres.apply import Plugin
     assert plugins == [('zgres#zgres-apply', Plugin)]
 
-@patch('zgres._plugin.iter_entry_points')
+@patch('zgres.plugin.iter_entry_points')
 def test_multiple_plugins(iter_entry_points):
     plugin1 = Mock()
     plugin1.name = 'plugin1'
@@ -109,13 +114,23 @@ def test_get_event_handler():
         ('plugin2', 'other_event', 1, 5),
         ]
 
+def test_error_where_plugin_mis_names_event():
+    log = []
+    plugins = configure([
+            ('plugin1', Plugin1),
+            ], log)
+    get_event_handler(plugins, ['event'])
+    with pytest.raises(AssertionError) as exec:
+        get_event_handler(plugins, ['evont_wuth_typo'])
+
+
 def test_get_event_handler_with_single_event():
     # Test an "single" event. This is an event which can not have more than one handler
     log = []
     plugins = configure([
             ('plugin2', Plugin2),
             ], log)
-    handler = get_event_handler(plugins, [dict(name='event', type='single', required=True)])
+    handler = get_event_handler(plugins, [dict(name='event', type='single', required=True), 'other_event'])
     # Call the real event
     result = handler.event('hey')
     assert result == 'hey-ho'

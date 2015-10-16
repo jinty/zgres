@@ -30,6 +30,8 @@ import argparse
 from subprocess import call, check_call
 from collections import abc
 
+from .plugin import subscribe
+
 #
 # Hook Tools
 #
@@ -120,6 +122,7 @@ class Plugin:
     def __init__(self, name, app):
         pass
 
+    @subscribe
     def conn_info(self, state):
         with open('/var/lib/zgres/config/databases.json.tmp', 'w') as f:
             f.write(json.dumps(state, sort_keys=True))

@@ -9,6 +9,7 @@ import psycopg2
 from subprocess import check_call
 
 from .utils import pg_lsn_to_int
+from .plugin import subscribe
 
 class Ec2SnapshotBackupPlugin:
 
@@ -17,6 +18,7 @@ class Ec2SnapshotBackupPlugin:
     def __init__(self, name, app):
         self.app = app
 
+    @subscribe
     def initialize(self):
         metadata = boto.utils.get_instance_metadata()
         self._instance_id = metadata['instance-id']
@@ -49,6 +51,7 @@ class Ec2SnapshotBackupPlugin:
     def _uuid(self):
         return uuid.uuid1()
 
+    @subscribe
     def pg_backup(self):
         conn = self._conn()
         # find the EC2 volumes we should be backing up from their device names
@@ -114,6 +117,7 @@ class Ec2SnapshotBackupPlugin:
         """/dev/sdf -> /dev/xvdf"""
         return device.replace('/dev/sd', '/dev/xvd')
 
+    @subscribe
     def pg_restore(self):
         conn = self._conn()
         snapshots = self._get_my_snapshots(conn)
