@@ -27,9 +27,10 @@ def app():
         get_plugins.return_value = Mock(spec_set=[s['name'] for s in _PLUGIN_API])
         app = App({})
     plugins = app._plugins
-    return app, app._plugins
+    return app
 
-def setup_plugins(plugins, **kw):
+def setup_plugins(app, **kw):
+    plugins = app._plugins
     from ..deadman import _PLUGIN_API
     get_my_id = kw.get('get_my_id', '42')
     postgresql_am_i_replica = kw.get('postgresql_am_i_replica', True)
@@ -54,11 +55,10 @@ def setup_plugins(plugins, **kw):
                     v = iter(z) # make it a real iterable
                 break
         getattr(plugins, k).return_value = v
+    return plugins
 
 def test_master_bootstrap(app):
-    app, plugins = app
-    setup_plugins(
-            plugins,
+    plugins = setup_plugins(app,
             dcs_get_database_identifier=None,
             dcs_lock=True,
             postgresql_get_database_identifier='42')
@@ -86,9 +86,7 @@ def test_master_bootstrap(app):
     assert timeout == 0
 
 def test_master_boostrap_fails_to_lock_db_id(app):
-    app, plugins = app
-    setup_plugins(
-            plugins,
+    plugins = setup_plugins(app,
             dcs_get_database_identifier=None,
             dcs_lock=False,
             postgresql_get_database_identifier='42')
@@ -110,9 +108,7 @@ def test_master_boostrap_fails_to_lock_db_id(app):
     assert timeout == 5
 
 def test_replica_bootstrap(app):
-    app, plugins = app
-    setup_plugins(
-            plugins,
+    plugins = setup_plugins(app,
             dcs_get_database_identifier='1234',
             postgresql_get_database_identifier='42')
     timeout = app.initialize()
@@ -132,9 +128,7 @@ def test_replica_bootstrap(app):
     assert timeout == 0
 
 def test_replica_bootstrap_fails_sanity_test(app):
-    app, plugins = app
-    setup_plugins(
-            plugins,
+    plugins = setup_plugins(app,
             postgresql_am_i_replica=False,
             dcs_get_database_identifier='1234',
             postgresql_get_database_identifier='42')
@@ -157,9 +151,7 @@ def test_replica_bootstrap_fails_sanity_test(app):
 
 @pytest.mark.asyncio
 async def test_master_start(app):
-    app, plugins = app
-    setup_plugins(
-            plugins,
+    plugins = setup_plugins(app,
             dcs_get_database_identifier='1234',
             dcs_lock=True,
             postgresql_am_i_replica=False,
@@ -203,9 +195,7 @@ async def test_master_start(app):
 
 def test_failed_over_master_start(app):
     # A master has failed over and restarted, another master has sucessfully advanced
-    app, plugins = app
-    setup_plugins(
-            plugins,
+    plugins = setup_plugins(app,
             dcs_lock=False,
             dcs_get_all_state=[('a better master', mock_state(replica=False, pg_current_xlog_location='68B/0000000'))],
             postgresql_am_i_replica=False)
@@ -231,9 +221,7 @@ def test_failed_over_master_start(app):
     assert timeout == 5
 
 def test_replica_start(app):
-    app, plugins = app
-    setup_plugins(
-            plugins,
+    plugins = setup_plugins(app,
             dcs_get_database_identifier='1234',
             dcs_lock=True,
             postgresql_am_i_replica=True,
@@ -274,11 +262,10 @@ def test_replica_start(app):
            ]
 
 def test_restart_master(app):
-    app, plugins = app
-    setup_plugins(plugins,
+    plugins = setup_plugins(app,
             postgresql_am_i_replica=False)
     app.initialize()
-    app._plugins.reset_mock()
+    plugins.reset_mock()
     with patch('time.sleep') as sleep:
         with patch('sys.exit') as exit:
             app.restart(10)
@@ -291,11 +278,10 @@ def test_restart_master(app):
             ]
 
 def test_restart_replica(app):
-    app, plugins = app
-    setup_plugins(plugins,
+    plugins = setup_plugins(app,
             postgresql_am_i_replica=True)
     app.initialize()
-    app._plugins.reset_mock()
+    plugins.reset_mock()
     with patch('time.sleep') as sleep:
         with patch('sys.exit') as exit:
             app.restart(10)
@@ -308,11 +294,10 @@ def test_restart_replica(app):
 
 @pytest.mark.asyncio
 async def test_master_lock_broken(app):
-    app, plugins = app
-    setup_plugins(plugins,
+    plugins = setup_plugins(app,
             postgresql_am_i_replica=False)
     assert app.initialize() == None
-    app._plugins.reset_mock()
+    plugins.reset_mock()
     # if the lock is broken, shutdown postgresql and exist
     with patch('time.sleep') as sleep:
         with patch('sys.exit') as exit:
@@ -327,7 +312,7 @@ async def test_master_lock_broken(app):
             ]
     assert app._master_lock_owner == None
     # if the lock changes owner to someone else, shutdown postgresql and exist
-    app._plugins.reset_mock()
+    plugins.reset_mock()
     with patch('time.sleep') as sleep:
         with patch('sys.exit') as exit:
             app.master_lock_changed('someone else')
@@ -341,7 +326,7 @@ async def test_master_lock_broken(app):
             ]
     assert app._master_lock_owner == 'someone else'
     # if the lock is owned by us, carry on trucking
-    app._plugins.reset_mock()
+    plugins.reset_mock()
     with patch('time.sleep') as sleep:
         with patch('sys.exit') as exit:
             app.master_lock_changed(app.my_id)
@@ -354,20 +339,19 @@ async def test_master_lock_broken(app):
 
 @pytest.mark.asyncio
 async def test_replica_reaction_to_master_lock_change(app):
-    app, plugins = app
-    setup_plugins(plugins,
+    plugins = setup_plugins(app,
             postgresql_am_i_replica=True)
     assert app.initialize() == None
-    app._plugins.reset_mock()
+    plugins.reset_mock()
     # if the lock changes owner to someone else, carry on trucking
-    app._plugins.reset_mock()
+    plugins.reset_mock()
     app.master_lock_changed('someone else')
     assert app._plugins.mock_calls ==  [
             call.postgresql_am_i_replica(),
             ]
     assert app._master_lock_owner == 'someone else'
     # if the lock is owned by us, er, we stop replication and become the master
-    app._plugins.reset_mock()
+    plugins.reset_mock()
     app.master_lock_changed(app.my_id)
     assert app._plugins.mock_calls ==  [
             call.postgresql_am_i_replica(),
@@ -377,15 +361,14 @@ async def test_replica_reaction_to_master_lock_change(app):
 
 @pytest.mark.asyncio
 async def test_replica_tries_to_take_over(app):
-    app, plugins = app
-    setup_plugins(plugins,
+    plugins = setup_plugins(app,
             postgresql_am_i_replica=True)
     assert app.initialize() == None
-    app._plugins.reset_mock()
+    plugins.reset_mock()
     # if there is no lock owner, we start looping trying to become master
     app.master_lock_changed(None)
     assert app._plugins.mock_calls ==  [call.postgresql_am_i_replica()]
-    app._plugins.reset_mock()
+    plugins.reset_mock()
     from asyncio import sleep as real_sleep
     with patch('asyncio.sleep') as sleep:
         sleeper = FakeSleeper()
