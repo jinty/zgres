@@ -188,12 +188,12 @@ class ZooKeeperSource:
 
 class ZooKeeperDeadmanPlugin:
 
-    tick_time = 2 # seconds: this should match the zookeeper server tick time (normally specified in milliseconds)
-
     def __init__(self, name, app):
         self.name = name
         self.app = app
         self._monitors = {}
+        self.tick_time = app.tick_time # seconds: this should match the zookeeper server tick time (normally specified in milliseconds)
+
 
     def _path(self, type, name=None):
         if name is None:

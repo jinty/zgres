@@ -134,13 +134,14 @@ class App:
     my_id = None
     config = None
     database_identifier = None
+    tick_time = None
 
     def __init__(self, config):
         self.health_problems = {}
         self._conn_info = {}
         self._state = {}
         self.config = config
-        self.tick_time = 1 # 1 second
+        self.tick_time = config['deadman'].get('tick_time', 2) # float seconds to scale all timeouts
         self._setup_plugins()
         self.logger = logging
 
@@ -233,7 +234,7 @@ class App:
                 # This is a wierd situation becase another master should have taken over before
                 # we restarted and got the lock. let's check in a little while if we become healthy,
                 # else try failover again
-                self._loop.call_later(600, self._loop.create_task, self._handle_unhealthy_master())
+                self._loop.call_later(300 * self.tick_time, self._loop.create_task, self._handle_unhealthy_master())
         return None
 
     def update_state(self, _force=False, **kw):
@@ -295,10 +296,17 @@ class App:
         self.logger.info('Not the best replica because these nodes were better than me: {}'.format(the_best))
         return False
 
+    async def _async_sleep(self, delay):
+        await asyncio.sleep(delay * self.tick_time)
+
+    def _sleep(self, delay):
+        # blocking sleep
+        time.sleep(delay * self.tick_time)
+
     async def _try_takeover(self):
         while True:
             self.logger.info('Sleeping a little to allow state to be updated in the DCS before trying to take over')
-            await asyncio.sleep(3) # let replicas update their state
+            await self._async_sleep(3) # let replicas update their state
             # The master is still missing and we should decide if we must take over
             if self._master_lock_owner is not None:
                 self.logger.info('There is a new master: {}, stop trying to take over'.format(self._master_lock_owner))
@@ -336,7 +344,7 @@ class App:
                 if self._plugins.is_there_willing_replica():
                     # fallover
                     self.restart(120)
-                await loop.sleep(30)
+                await self._async_sleep(30)
 
     def healthy(self, key):
         """Plugins call this if they want to declare the instance unhealthy"""
@@ -373,8 +381,8 @@ class App:
             # If we are master, we must stop postgresql to avoid a split brain
             self._plugins.pg_stop()
         self._plugins.dcs_disconnect()
-        logging.info('sleeping for {} seconds, then restarting'.format(timeout))
-        time.sleep(timeout) # yes, this blocks everything. that's the point of it!
+        logging.info('sleeping for {} ticks, then restarting'.format(timeout))
+        self._sleep(timeout) # yes, this blocks everything. that's the point of it!
         sys.exit(0) # hopefully we get restarted immediately
 
     def pg_connect_info(self):

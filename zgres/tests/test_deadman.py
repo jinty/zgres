@@ -25,7 +25,8 @@ def app():
     from ..deadman import App, _PLUGIN_API
     with patch('zgres._plugin.get_plugins') as get_plugins:
         get_plugins.return_value = Mock(spec_set=[s['name'] for s in _PLUGIN_API])
-        app = App({})
+        app = App(dict(deadman=
+            dict(tick_time=1)))
     plugins = app._plugins
     return app
 
