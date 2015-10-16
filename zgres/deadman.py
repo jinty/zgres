@@ -31,6 +31,13 @@ _PLUGIN_API = [
             required=True,
             type='single'),
 
+        dict(name='dcs_set_timeline',
+            required=True,
+            type='multiple'),
+        dict(name='dcs_get_timeline',
+            required=True,
+            type='single'),
+
         dict(name='dcs_lock',
             required=True,
             type='single'),
@@ -69,6 +76,9 @@ _PLUGIN_API = [
         dict(name='postgresql_get_database_identifier',
             required=True,
             type='single'),
+        dict(name='postgresql_get_timeline',
+            required=True,
+            type='single'),
         # stop postgresql if it is not already stopped
         dict(name='postgresql_stop',
             required=True,
@@ -89,9 +99,6 @@ _PLUGIN_API = [
         dict(name='postgresql_stop_replication', # implement
             required=True,
             type='multiple'),
-        dict(name='postgresql_state',
-            required=True,
-            type='single'),
 
         # create a backup and put it where replicas can get it
         dict(name='postgresql_backup',
@@ -204,21 +211,17 @@ class App:
         self.database_identifier = my_database_id
         am_replica = self._plugins.postgresql_am_i_replica()
         if not am_replica:
-            self.logger.info('I am NOT a replica, trying to get the master lock')
             if not self._plugins.dcs_lock('master'):
                 self._plugins.postgresql_stop()
-                our_xlog_location = utils.pg_lsn_to_int(self._plugins.postgresql_state()['pg_current_xlog_location'])
-                for id, state in self._plugins.dcs_get_all_state():
-                    if state['pg_is_in_recovery']:
-                        continue
-                    if our_xlog_location >= utils.pg_lsn_to_int(state['pg_current_xlog_location']):
-                        continue
-                    self.logger.info('I could not get the master lock and the new master is moving ahead. Goodbye cruel world...')
-                    # there is already another master and it has moved ahead of us
+                my_timeline = self._plugins.postgresql_get_timeline()
+                existing_timeline = self._plugins.dcs_get_timeline()
+                if existing_timeline > my_timeline:
+                    # a master has started while we didn't have the lock.
+                    # we can't start again for risk of split brain
                     self._plugins.postgresql_reset()
-                    return 5
-                self.logger.info('I could not get the master lock, but the master has not moved ahead of me (new master not functioning?) will try again in a bit')
-                return 60
+                else:
+                    self.logger.info('I could not get the master lock, but the master has not started up yet. (new master not functioning?) will try again in a bit')
+                return 5
         self.logger.info('Making sure postgresql is running')
         self._plugins.postgresql_start()
         self.logger.info('Starting monitors')
@@ -245,6 +248,10 @@ class App:
             # don't update state in the DCS till we are finished updating
             self._plugins.dcs_set_state(self._state)
 
+    def _update_timeline(self):
+        my_timeline = self._plugins.postgresql_get_timeline()
+        self._plugins.dcs_set_timeline(my_timeline)
+
     def master_lock_changed(self, owner):
         """Respond to a change in the maser lock"""
         self._master_lock_owner = owner
@@ -252,6 +259,7 @@ class App:
             # I should be the master
             if self._plugins.postgresql_am_i_replica():
                 self._plugins.postgresql_stop_replication()
+                self._update_timeline()
         else:
             if not self._plugins.postgresql_am_i_replica():
                 # if I am master, wither the lock was deleted or someone else got it, shut down

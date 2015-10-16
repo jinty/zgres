@@ -38,8 +38,9 @@ def setup_plugins(app, **kw):
     defaults = {
             'postgresql_am_i_replica': postgresql_am_i_replica,
             'dcs_get_all_state': [(get_my_id, mystate)],
+            'postgresql_get_timeline': 1,
+            'dcs_get_timeline': 1,
             'get_my_id': get_my_id,
-            'postgresql_state': mystate,
             'dcs_get_database_identifier': '12345',
             'postgresql_get_database_identifier': '12345',
             }
@@ -197,7 +198,8 @@ def test_failed_over_master_start(app):
     # A master has failed over and restarted, another master has sucessfully advanced
     plugins = setup_plugins(app,
             dcs_lock=False,
-            dcs_get_all_state=[('a better master', mock_state(replica=False, pg_current_xlog_location='68B/0000000'))],
+            dcs_get_timeline=2,
+            postgresql_get_timeline=1,
             postgresql_am_i_replica=False)
     # sync startup
     timeout = app.initialize()
@@ -212,9 +214,10 @@ def test_failed_over_master_start(app):
             # no, so check if there is a master
             call.dcs_lock('master'),
             call.postgresql_stop(),
-            # compare our xlog location to what's in the 
-            call.postgresql_state(),
-            call.dcs_get_all_state(),
+            # compare our timeline to what's in the DCS
+            call.postgresql_get_timeline(),
+            call.dcs_get_timeline(),
+            # we're on an older timeline, so reset
             call.postgresql_reset(),
             ]
     # Carry on running afterwards
@@ -340,6 +343,7 @@ async def test_master_lock_broken(app):
 @pytest.mark.asyncio
 async def test_replica_reaction_to_master_lock_change(app):
     plugins = setup_plugins(app,
+            postgresql_get_timeline=42,
             postgresql_am_i_replica=True)
     assert app.initialize() == None
     plugins.reset_mock()
@@ -353,9 +357,12 @@ async def test_replica_reaction_to_master_lock_change(app):
     # if the lock is owned by us, er, we stop replication and become the master
     plugins.reset_mock()
     app.master_lock_changed(app.my_id)
+    print(app._plugins.mock_calls)
     assert app._plugins.mock_calls ==  [
             call.postgresql_am_i_replica(),
             call.postgresql_stop_replication(),
+            call.postgresql_get_timeline(),
+            call.dcs_set_timeline(42),
             ]
     assert app._master_lock_owner == app.my_id
 
