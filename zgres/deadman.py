@@ -70,44 +70,44 @@ _PLUGIN_API = [
             type='multiple'),
 
         ######### Dealing with the local postgresql cluster
-        dict(name='postgresql_connect_info', # return a dict with the connection info
+        dict(name='pg_connect_info', # return a dict with the connection info
             required=True,
             type='single'),
-        dict(name='postgresql_get_database_identifier',
+        dict(name='pg_get_database_identifier',
             required=True,
             type='single'),
-        dict(name='postgresql_get_timeline',
+        dict(name='pg_get_timeline',
             required=True,
             type='single'),
         # stop postgresql if it is not already stopped
-        dict(name='postgresql_stop',
+        dict(name='pg_stop',
             required=True,
             type='multiple'),
         # start postgresql if it is not already running
-        dict(name='postgresql_start',
+        dict(name='pg_start',
             required=True,
             type='multiple'),
         # halt: should prevent the existing database from running again.
         # either stop the whole machine, move data directory aside, pg_rewind or prepare for re-bootstrapping as a slave
-        dict(name='postgresql_reset',
+        dict(name='pg_reset',
             required=True,
             type='multiple'),
         # create a new postgresql database
-        dict(name='postgresql_initdb',
+        dict(name='pg_initdb',
             required=True,
             type='multiple'),
-        dict(name='postgresql_stop_replication', # implement
+        dict(name='pg_stop_replication', # implement
             required=True,
             type='multiple'),
 
         # create a backup and put it where replicas can get it
-        dict(name='postgresql_backup',
+        dict(name='pg_backup',
             required=True,
             type='multiple'),
-        dict(name='postgresql_restore', # XXX -setup replication
+        dict(name='pg_restore', # XXX -setup replication
             required=True,
             type='multiple'),
-        dict(name='postgresql_am_i_replica',
+        dict(name='pg_am_i_replica',
             required=True,
             type='single'),
 
@@ -152,11 +152,11 @@ class App:
                 self)
 
     def replica_bootstrap(self):
-        self._plugins.postgresql_stop()
-        self._plugins.postgresql_restore()
-        if not self._plugins.postgresql_am_i_replica():
+        self._plugins.pg_stop()
+        self._plugins.pg_restore()
+        if not self._plugins.pg_am_i_replica():
             # destroy our current cluster
-            self._plugins.postgresql_reset()
+            self._plugins.pg_reset()
             logging.error("Something is seriously wrong: after restoring postgresql was NOT setup as a replica.")
             return 5
         return 0
@@ -165,9 +165,9 @@ class App:
         # Bootstrap the master, make sure that the master can be
         # backed up and started before we set the database id
         self.logger.info('Initializing master DB')
-        self._plugins.postgresql_initdb()
-        self._plugins.postgresql_start()
-        database_id = self._plugins.postgresql_get_database_identifier()
+        self._plugins.pg_initdb()
+        self._plugins.pg_start()
+        database_id = self._plugins.pg_get_database_identifier()
         self.logger.info('Initializing done, master database identifier: {}'.format(database_id))
         if self._plugins.dcs_lock('database_identifier'):
             self.logger.info('Got database identifer lock')
@@ -176,7 +176,7 @@ class App:
                 return 0
             self.logger.info('No database identifer yet, performing first backup')
             self.database_identifier = database_id
-            self._plugins.postgresql_backup()
+            self._plugins.pg_backup()
             if not self._plugins.dcs_set_database_identifier(database_id):
                 raise AssertionError('Something is VERY badly wrong.... this should never happen....')
             self.logger.info('Successfully bootstrapped master and set database identifier: {}'.format(database_id))
@@ -204,26 +204,26 @@ class App:
             self.logger.info('Could not find database identifier in DCS, bootstrapping master')
             return self.master_bootstrap()
         self.logger.info('Found database identifier: {}'.format(their_database_id))
-        my_database_id = self._plugins.postgresql_get_database_identifier()
+        my_database_id = self._plugins.pg_get_database_identifier()
         if my_database_id != their_database_id:
             self.logger.info('My database identifer is different ({}), bootstrapping as replica'.format(my_database_id))
             return self.replica_bootstrap()
         self.database_identifier = my_database_id
-        am_replica = self._plugins.postgresql_am_i_replica()
+        am_replica = self._plugins.pg_am_i_replica()
         if not am_replica:
             if not self._plugins.dcs_lock('master'):
-                self._plugins.postgresql_stop()
-                my_timeline = self._plugins.postgresql_get_timeline()
+                self._plugins.pg_stop()
+                my_timeline = self._plugins.pg_get_timeline()
                 existing_timeline = self._plugins.dcs_get_timeline()
                 if existing_timeline > my_timeline:
                     # a master has started while we didn't have the lock.
                     # we can't start again for risk of split brain
-                    self._plugins.postgresql_reset()
+                    self._plugins.pg_reset()
                 else:
                     self.logger.info('I could not get the master lock, but the master has not started up yet. (new master not functioning?) will try again in a bit')
                 return 5
         self.logger.info('Making sure postgresql is running')
-        self._plugins.postgresql_start()
+        self._plugins.pg_start()
         self.logger.info('Starting monitors')
         self._plugins.start_monitoring()
         self.healthy('zgres.initialize')
@@ -249,7 +249,7 @@ class App:
             self._plugins.dcs_set_state(self._state)
 
     def _update_timeline(self):
-        my_timeline = self._plugins.postgresql_get_timeline()
+        my_timeline = self._plugins.pg_get_timeline()
         self._plugins.dcs_set_timeline(my_timeline)
 
     def master_lock_changed(self, owner):
@@ -257,11 +257,11 @@ class App:
         self._master_lock_owner = owner
         if owner == self.my_id:
             # I should be the master
-            if self._plugins.postgresql_am_i_replica():
-                self._plugins.postgresql_stop_replication()
+            if self._plugins.pg_am_i_replica():
+                self._plugins.pg_stop_replication()
                 self._update_timeline()
         else:
-            if not self._plugins.postgresql_am_i_replica():
+            if not self._plugins.pg_am_i_replica():
                 # if I am master, wither the lock was deleted or someone else got it, shut down
                 self.restart(10)
             if owner is None:
@@ -321,7 +321,7 @@ class App:
         if 'zgres.initialize' in self.health_problems:
             return
         logging.warn('I am unhelthy: ({}) {}'.format(key, reason))
-        if self._plugins.postgresql_am_i_replica():
+        if self._plugins.pg_am_i_replica():
             if not can_be_replica:
                 self.dcs_remove_conn_info()
         else:
@@ -349,7 +349,7 @@ class App:
             logging.warn('I am still unhelthy for these reasons: {}'.format(self.health_problems))
         else:
             # YAY, we're healthy again
-            if not self._plugins.postgresql_am_i_replica():
+            if not self._plugins.pg_am_i_replica():
                 locked = self._plugins.dcs_lock('master')
                 if not locked:
                     # for some reason we cannot lock the master, restart and try again
@@ -369,17 +369,17 @@ class App:
         app.restart(timeout)
 
     def restart(self, timeout):
-        if not self._plugins.postgresql_am_i_replica():
+        if not self._plugins.pg_am_i_replica():
             # If we are master, we must stop postgresql to avoid a split brain
-            self._plugins.postgresql_stop()
+            self._plugins.pg_stop()
         self._plugins.dcs_disconnect()
         logging.info('sleeping for {} seconds, then restarting'.format(timeout))
         time.sleep(timeout) # yes, this blocks everything. that's the point of it!
         sys.exit(0) # hopefully we get restarted immediately
 
-    def postgresql_connect_info(self):
-        # expose postgresql_connect for other plugins to use
-        return self._plugins.postgresql_connect_info()
+    def pg_connect_info(self):
+        # expose pg_connect for other plugins to use
+        return self._plugins.pg_connect_info()
 
 #
 # Command Line Scripts

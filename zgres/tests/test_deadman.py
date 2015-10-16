@@ -33,18 +33,18 @@ def setup_plugins(app, **kw):
     plugins = app._plugins
     from ..deadman import _PLUGIN_API
     get_my_id = kw.get('get_my_id', '42')
-    postgresql_am_i_replica = kw.get('postgresql_am_i_replica', True)
-    mystate = mock_state(replica=postgresql_am_i_replica)
+    pg_am_i_replica = kw.get('pg_am_i_replica', True)
+    mystate = mock_state(replica=pg_am_i_replica)
     defaults = {
-            'postgresql_am_i_replica': postgresql_am_i_replica,
+            'pg_am_i_replica': pg_am_i_replica,
             'dcs_get_all_state': [(get_my_id, mystate)],
-            'postgresql_get_timeline': 1,
+            'pg_get_timeline': 1,
             'dcs_get_timeline': 1,
             'get_my_id': get_my_id,
             'dcs_get_database_identifier': '12345',
-            'postgresql_get_database_identifier': '12345',
+            'pg_get_database_identifier': '12345',
             }
-    if not postgresql_am_i_replica:
+    if not pg_am_i_replica:
         defaults['dcs_lock'] = True
     defaults.update(kw)
     for k, v in defaults.items():
@@ -62,7 +62,7 @@ def test_master_bootstrap(app):
     plugins = setup_plugins(app,
             dcs_get_database_identifier=None,
             dcs_lock=True,
-            postgresql_get_database_identifier='42')
+            pg_get_database_identifier='42')
     timeout = app.initialize()
     assert app._plugins.mock_calls ==  [
             call.initialize(),
@@ -70,16 +70,16 @@ def test_master_bootstrap(app):
             # check if we have a db identifier set
             call.dcs_get_database_identifier(),
             # no, ok, init our db
-            call.postgresql_initdb(),
+            call.pg_initdb(),
             # make sure it starts
-            call.postgresql_start(),
-            call.postgresql_get_database_identifier(),
+            call.pg_start(),
+            call.pg_get_database_identifier(),
             # lock the database identifier so no-one else gets here
             call.dcs_lock('database_identifier'),
             # while locked make sure there is no id set in the DCS before we got the lock
             call.dcs_get_database_identifier(),
             # Make the first backup while locked with no DCS
-            call.postgresql_backup(),
+            call.pg_backup(),
             # set the database identifier AFTER
             call.dcs_set_database_identifier('42')
             ]
@@ -90,7 +90,7 @@ def test_master_boostrap_fails_to_lock_db_id(app):
     plugins = setup_plugins(app,
             dcs_get_database_identifier=None,
             dcs_lock=False,
-            postgresql_get_database_identifier='42')
+            pg_get_database_identifier='42')
     timeout = app.initialize()
     assert app._plugins.mock_calls ==  [
             call.initialize(),
@@ -98,10 +98,10 @@ def test_master_boostrap_fails_to_lock_db_id(app):
             # check if we have a db identifier set
             call.dcs_get_database_identifier(),
             # no, ok, init our db
-            call.postgresql_initdb(),
+            call.pg_initdb(),
             # make sure it starts
-            call.postgresql_start(),
-            call.postgresql_get_database_identifier(),
+            call.pg_start(),
+            call.pg_get_database_identifier(),
             # lock the database identifier so no-one else gets here
             call.dcs_lock('database_identifier')
             ]
@@ -111,41 +111,41 @@ def test_master_boostrap_fails_to_lock_db_id(app):
 def test_replica_bootstrap(app):
     plugins = setup_plugins(app,
             dcs_get_database_identifier='1234',
-            postgresql_get_database_identifier='42')
+            pg_get_database_identifier='42')
     timeout = app.initialize()
     assert app._plugins.mock_calls ==  [
             call.initialize(),
             call.get_my_id(),
             # compare our id with the id in the DCS
             call.dcs_get_database_identifier(),
-            call.postgresql_get_database_identifier(),
+            call.pg_get_database_identifier(),
             # make sure postgresql is stopped
-            call.postgresql_stop(),
+            call.pg_stop(),
             # postgresql restore
-            call.postgresql_restore(),
-            call.postgresql_am_i_replica()
+            call.pg_restore(),
+            call.pg_am_i_replica()
             ]
     # shut down cleanly and immediately
     assert timeout == 0
 
 def test_replica_bootstrap_fails_sanity_test(app):
     plugins = setup_plugins(app,
-            postgresql_am_i_replica=False,
+            pg_am_i_replica=False,
             dcs_get_database_identifier='1234',
-            postgresql_get_database_identifier='42')
+            pg_get_database_identifier='42')
     timeout = app.initialize()
     assert app._plugins.mock_calls ==  [
             call.initialize(),
             call.get_my_id(),
             # compare our id with the id in the DCS
             call.dcs_get_database_identifier(),
-            call.postgresql_get_database_identifier(),
+            call.pg_get_database_identifier(),
             # make sure postgresql is stopped
-            call.postgresql_stop(),
+            call.pg_stop(),
             # postgresql restore
-            call.postgresql_restore(),
-            call.postgresql_am_i_replica(),
-            call.postgresql_reset(),
+            call.pg_restore(),
+            call.pg_am_i_replica(),
+            call.pg_reset(),
             ]
     # shut down after 5 seconds to try again
     assert timeout == 5
@@ -155,8 +155,8 @@ async def test_master_start(app):
     plugins = setup_plugins(app,
             dcs_get_database_identifier='1234',
             dcs_lock=True,
-            postgresql_am_i_replica=False,
-            postgresql_get_database_identifier='1234')
+            pg_am_i_replica=False,
+            pg_get_database_identifier='1234')
     def start_monitoring():
         app.unhealthy('test_monitor', 'Waiting for first check')
     plugins.start_monitoring.side_effect = start_monitoring
@@ -167,13 +167,13 @@ async def test_master_start(app):
             call.get_my_id(),
             # compare our id with the id in the DCS
             call.dcs_get_database_identifier(),
-            call.postgresql_get_database_identifier(),
+            call.pg_get_database_identifier(),
             # check if I am a replica
-            call.postgresql_am_i_replica(),
+            call.pg_am_i_replica(),
             # no, so check if there is a master
             call.dcs_lock('master'),
             # no master, so sure the DB is running
-            call.postgresql_start(),
+            call.pg_start(),
             # start monitoring
             call.start_monitoring(),
             # set our first state
@@ -189,7 +189,7 @@ async def test_master_start(app):
     app.healthy('test_monitor')
     assert plugins.mock_calls ==  [
             call.dcs_set_state({'health_problems': {}}),
-            call.postgresql_am_i_replica(),
+            call.pg_am_i_replica(),
             call.dcs_lock('master'),
             call.dcs_set_conn({}),
            ]
@@ -199,8 +199,8 @@ def test_failed_over_master_start(app):
     plugins = setup_plugins(app,
             dcs_lock=False,
             dcs_get_timeline=2,
-            postgresql_get_timeline=1,
-            postgresql_am_i_replica=False)
+            pg_get_timeline=1,
+            pg_am_i_replica=False)
     # sync startup
     timeout = app.initialize()
     assert plugins.mock_calls ==  [
@@ -208,17 +208,17 @@ def test_failed_over_master_start(app):
             call.get_my_id(),
             # compare our id with the id in the DCS
             call.dcs_get_database_identifier(),
-            call.postgresql_get_database_identifier(),
+            call.pg_get_database_identifier(),
             # check if I am a replica
-            call.postgresql_am_i_replica(),
+            call.pg_am_i_replica(),
             # no, so check if there is a master
             call.dcs_lock('master'),
-            call.postgresql_stop(),
+            call.pg_stop(),
             # compare our timeline to what's in the DCS
-            call.postgresql_get_timeline(),
+            call.pg_get_timeline(),
             call.dcs_get_timeline(),
             # we're on an older timeline, so reset
-            call.postgresql_reset(),
+            call.pg_reset(),
             ]
     # Carry on running afterwards
     assert timeout == 5
@@ -227,8 +227,8 @@ def test_replica_start(app):
     plugins = setup_plugins(app,
             dcs_get_database_identifier='1234',
             dcs_lock=True,
-            postgresql_am_i_replica=True,
-            postgresql_get_database_identifier='1234')
+            pg_am_i_replica=True,
+            pg_get_database_identifier='1234')
     app._conn_info['a'] = 'b'
     def start_monitoring():
         app.unhealthy('test_monitor', 'Waiting for first check')
@@ -240,11 +240,11 @@ def test_replica_start(app):
             call.get_my_id(),
             # compare our id with the id in the DCS
             call.dcs_get_database_identifier(),
-            call.postgresql_get_database_identifier(),
+            call.pg_get_database_identifier(),
             # check if I am a replica
-            call.postgresql_am_i_replica(),
+            call.pg_am_i_replica(),
             # not master, so sure the DB is running
-            call.postgresql_start(),
+            call.pg_start(),
             # start monitoring
             call.start_monitoring(),
             # set our first state
@@ -260,13 +260,13 @@ def test_replica_start(app):
     app.healthy('test_monitor')
     assert plugins.mock_calls ==  [
             call.dcs_set_state({'health_problems': {}}),
-            call.postgresql_am_i_replica(),
+            call.pg_am_i_replica(),
             call.dcs_set_conn({'a': 'b'}),
            ]
 
 def test_restart_master(app):
     plugins = setup_plugins(app,
-            postgresql_am_i_replica=False)
+            pg_am_i_replica=False)
     app.initialize()
     plugins.reset_mock()
     with patch('time.sleep') as sleep:
@@ -275,14 +275,14 @@ def test_restart_master(app):
             assert exit.called_once_with(0)
         assert sleep.called_once_with(10)
     assert app._plugins.mock_calls ==  [
-            call.postgresql_am_i_replica(),
-            call.postgresql_stop(),
+            call.pg_am_i_replica(),
+            call.pg_stop(),
             call.dcs_disconnect()
             ]
 
 def test_restart_replica(app):
     plugins = setup_plugins(app,
-            postgresql_am_i_replica=True)
+            pg_am_i_replica=True)
     app.initialize()
     plugins.reset_mock()
     with patch('time.sleep') as sleep:
@@ -291,14 +291,14 @@ def test_restart_replica(app):
             assert exit.called_once_with(0)
         assert sleep.called_once_with(10)
     assert app._plugins.mock_calls ==  [
-            call.postgresql_am_i_replica(),
+            call.pg_am_i_replica(),
             call.dcs_disconnect()
             ]
 
 @pytest.mark.asyncio
 async def test_master_lock_broken(app):
     plugins = setup_plugins(app,
-            postgresql_am_i_replica=False)
+            pg_am_i_replica=False)
     assert app.initialize() == None
     plugins.reset_mock()
     # if the lock is broken, shutdown postgresql and exist
@@ -308,9 +308,9 @@ async def test_master_lock_broken(app):
             assert exit.called_once_with(0)
         assert sleep.called_once_with(10)
     assert app._plugins.mock_calls ==  [
-            call.postgresql_am_i_replica(),
-            call.postgresql_am_i_replica(),
-            call.postgresql_stop(),
+            call.pg_am_i_replica(),
+            call.pg_am_i_replica(),
+            call.pg_stop(),
             call.dcs_disconnect()
             ]
     assert app._master_lock_owner == None
@@ -322,9 +322,9 @@ async def test_master_lock_broken(app):
             assert exit.called_once_with(0)
         assert sleep.called_once_with(10)
     assert app._plugins.mock_calls ==  [
-            call.postgresql_am_i_replica(),
-            call.postgresql_am_i_replica(),
-            call.postgresql_stop(),
+            call.pg_am_i_replica(),
+            call.pg_am_i_replica(),
+            call.pg_stop(),
             call.dcs_disconnect()
             ]
     assert app._master_lock_owner == 'someone else'
@@ -336,22 +336,22 @@ async def test_master_lock_broken(app):
             assert exit.called_once_with(0)
         assert sleep.called_once_with(10)
     assert app._plugins.mock_calls ==  [
-            call.postgresql_am_i_replica(),
+            call.pg_am_i_replica(),
             ]
     assert app._master_lock_owner == app.my_id
 
 @pytest.mark.asyncio
 async def test_replica_reaction_to_master_lock_change(app):
     plugins = setup_plugins(app,
-            postgresql_get_timeline=42,
-            postgresql_am_i_replica=True)
+            pg_get_timeline=42,
+            pg_am_i_replica=True)
     assert app.initialize() == None
     plugins.reset_mock()
     # if the lock changes owner to someone else, carry on trucking
     plugins.reset_mock()
     app.master_lock_changed('someone else')
     assert app._plugins.mock_calls ==  [
-            call.postgresql_am_i_replica(),
+            call.pg_am_i_replica(),
             ]
     assert app._master_lock_owner == 'someone else'
     # if the lock is owned by us, er, we stop replication and become the master
@@ -359,9 +359,9 @@ async def test_replica_reaction_to_master_lock_change(app):
     app.master_lock_changed(app.my_id)
     print(app._plugins.mock_calls)
     assert app._plugins.mock_calls ==  [
-            call.postgresql_am_i_replica(),
-            call.postgresql_stop_replication(),
-            call.postgresql_get_timeline(),
+            call.pg_am_i_replica(),
+            call.pg_stop_replication(),
+            call.pg_get_timeline(),
             call.dcs_set_timeline(42),
             ]
     assert app._master_lock_owner == app.my_id
@@ -369,12 +369,12 @@ async def test_replica_reaction_to_master_lock_change(app):
 @pytest.mark.asyncio
 async def test_replica_tries_to_take_over(app):
     plugins = setup_plugins(app,
-            postgresql_am_i_replica=True)
+            pg_am_i_replica=True)
     assert app.initialize() == None
     plugins.reset_mock()
     # if there is no lock owner, we start looping trying to become master
     app.master_lock_changed(None)
-    assert app._plugins.mock_calls ==  [call.postgresql_am_i_replica()]
+    assert app._plugins.mock_calls ==  [call.pg_am_i_replica()]
     plugins.reset_mock()
     from asyncio import sleep as real_sleep
     with patch('asyncio.sleep') as sleep:

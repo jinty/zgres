@@ -49,13 +49,13 @@ class Ec2SnapshotBackupPlugin:
     def _uuid(self):
         return uuid.uuid1()
 
-    def postgresql_backup(self):
+    def pg_backup(self):
         conn = self._conn()
         # find the EC2 volumes we should be backing up from their device names
         instance_volumes = self._get_volumes_for_our_devices(conn)
         # actually do the backup
         backup_id = str(self._uuid())
-        pg_conn = psycopg2.connect(**self.app.postgresql_connect_info())
+        pg_conn = psycopg2.connect(**self.app.pg_connect_info())
         cur = pg_conn.cursor()
         cur.execute("select pg_start_backup(%s);", (backup_id, ))
         position = cur.fetchall()[0][0]
@@ -114,7 +114,7 @@ class Ec2SnapshotBackupPlugin:
         """/dev/sdf -> /dev/xvdf"""
         return device.replace('/dev/sd', '/dev/xvd')
 
-    def postgresql_restore(self):
+    def pg_restore(self):
         conn = self._conn()
         snapshots = self._get_my_snapshots(conn)
         latest = snapshots[-1]

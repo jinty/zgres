@@ -83,7 +83,7 @@ class AptPostgresqlPlugin:
             v = v.strip()
             self._set_conf_value(k, v)
 
-    def postgresql_get_database_identifier(self):
+    def pg_get_database_identifier(self):
         if not os.path.exists(self._config_file()):
             return None
         data = check_output([
@@ -97,29 +97,29 @@ class AptPostgresqlPlugin:
                 return dbid
         return None
 
-    def postgresql_start(self):
+    def pg_start(self):
         self._set_config_values()
         check_call(['systemctl', 'start', self._service()])
 
-    def postgresql_stop(self):
+    def pg_stop(self):
         check_call(['systemctl', 'stop', self._service()])
 
-    def postgresql_initdb(self):
+    def pg_initdb(self):
         if os.path.exists(self._config_file()):
-            self.postgresql_stop()
+            self.pg_stop()
             check_call(['pg_dropcluster', '--stop', self._version, self._cluster_name])
         check_call(['pg_createcluster', self._version, self._cluster_name])
         self._copy_config()
         self._set_config_values()
         if self._superuser_connect_as:
-            self.postgresql_start()
+            self.pg_start()
             check_call(['sudo', '-u', 'postgres', 'createuser', '-s', '-h', self._socket_dir(), '-p', self._port(), self._superuser_connect_as])
-            self.postgresql_stop()
+            self.pg_stop()
 
-    def postgresql_connect_info(self):
+    def pg_connect_info(self):
         return dict(database='postgres', user=self._superuser_connect_as, host=self._socket_dir(), port=self._port())
 
-    def postgresql_am_i_replica(self):
+    def pg_am_i_replica(self):
         return os.path.exists(os.path.join(self._data_dir(), 'recovery.conf'))
 
     def start_monitoring(self):
