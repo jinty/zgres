@@ -137,3 +137,32 @@ async def test_master_lock_notification(plugin):
             mock.call('B'),
             mock.call(None),
             ]
+
+def test_timeline_default(plugin):
+    assert plugin().dcs_get_timeline() == 0
+
+def test_timelines_are_public(pluginAB):
+    pluginA, pluginB = pluginAB
+    pluginA.dcs_set_timeline(42)
+    assert pluginA.dcs_get_timeline() == 42
+    assert pluginB.dcs_get_timeline() == 42
+    pluginB.dcs_set_timeline(43)
+    assert pluginA.dcs_get_timeline() == 43
+    assert pluginB.dcs_get_timeline() == 43
+
+def test_timelines_can_only_increment(pluginAB):
+    pluginA, pluginB = pluginAB
+    pluginA.dcs_set_timeline(42)
+    pluginB.dcs_set_timeline(49)
+    with pytest.raises(ValueError) as exec:
+        assert pluginB.dcs_set_timeline(42)
+    with pytest.raises(ValueError) as exec:
+        assert pluginA.dcs_set_timeline(42)
+    assert pluginA.dcs_get_timeline() == 49
+
+def test_timelines_persist(pluginAB):
+    pluginA, pluginB = pluginAB
+    pluginA.dcs_set_timeline(49)
+    pluginA.dcs_disconnect()
+    assert pluginB.dcs_get_timeline() == 49
+

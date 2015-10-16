@@ -203,9 +203,6 @@ class ZooKeeperDeadmanPlugin:
             name = self.app.my_id
         return self._path_prefix + type + '/' + self._group_name + '-' + name
 
-    def _db_id_path(self):
-        return self._path('static', 'db-id')
-
     def _lock_path(self, name):
         return self._path('lock', name)
 
@@ -242,22 +239,52 @@ class ZooKeeperDeadmanPlugin:
         else:
             self.app.healthy(unhealthy_key)
 
-    @subscribe
-    def dcs_set_database_identifier(self, database_id):
-        database_id = database_id.encode('ascii')
+    def _get_static(self, key):
+        path = self._path('static', key)
         try:
-            self._zk.create(self._db_id_path(), database_id, makepath=True)
+            data, stat = self._zk.get(path)
+        except kazoo.exceptions.NoNodeError:
+            return None
+        return data
+    
+    def _set_static(self, key, data, overwrite=False):
+        path = self._path('static', key)
+        try:
+            self._zk.create(path, data, makepath=True)
         except kazoo.exceptions.NodeExistsError:
+            if overwrite:
+                self._zk.set(path, data)
+                return True
             return False
         return True
 
     @subscribe
+    def dcs_set_database_identifier(self, database_id):
+        database_id = database_id.encode('ascii')
+        return self._set_static('database_identifier', database_id)
+
+    @subscribe
     def dcs_get_database_identifier(self):
-        try:
-            dbid, stat = self._zk.get(self._db_id_path())
-        except kazoo.exceptions.NoNodeError:
-            return None
-        return dbid.decode('ascii')
+        data = self._get_static('database_identifier')
+        if data is not None:
+            data = data.decode('ascii')
+        return data
+
+    @subscribe
+    def dcs_set_timeline(self, timeline):
+        assert isinstance(timeline, int)
+        existing = self.dcs_get_timeline()
+        if existing > timeline:
+            raise ValueError('Timelines can only increase.')
+        timeline = str(timeline).encode('ascii')
+        self._set_static('timeline', timeline, overwrite=True)
+
+    @subscribe
+    def dcs_get_timeline(self):
+        data = self._get_static('timeline')
+        if data is None:
+            data = b'0'
+        return int(data.decode('ascii'))
 
     @subscribe
     def start_monitoring(self):
