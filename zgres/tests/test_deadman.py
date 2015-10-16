@@ -8,13 +8,13 @@ from . import FakeSleeper
 def mock_state(replica=False, **kw):
     if replica:
         defaults = dict(
-                willing_replica=True,
+                health_problems={},
                 pg_is_in_recovery=True,
                 pg_last_xlog_replay_location='68A/16E1DA8',
                 pg_last_xlog_receive_location='68A/16E1DA8')
     else:
         defaults = dict(
-                willing_replica=False,
+                health_problems={},
                 pg_is_in_recovery=False,
                 pg_current_xlog_location='68A/16E1DA8')
     defaults.update(kw)
@@ -182,7 +182,11 @@ async def test_master_start(app):
             # no master, so sure the DB is running
             call.postgresql_start(),
             # start monitoring
-            call.start_monitoring()
+            call.start_monitoring(),
+            # set our first state
+            call.dcs_set_state({'health_problems':
+                {'test_monitor':
+                    {'can_be_replica': False, 'reason': 'Waiting for first check'}}})
             ]
     # Carry on running afterwards
     assert timeout == None
@@ -191,6 +195,7 @@ async def test_master_start(app):
     plugins.reset_mock()
     app.healthy('test_monitor')
     assert plugins.mock_calls ==  [
+            call.dcs_set_state({'health_problems': {}}),
             call.postgresql_am_i_replica(),
             call.dcs_lock('master'),
             call.dcs_set_conn({}),
@@ -250,7 +255,11 @@ def test_replica_start(app):
             # not master, so sure the DB is running
             call.postgresql_start(),
             # start monitoring
-            call.start_monitoring()
+            call.start_monitoring(),
+            # set our first state
+            call.dcs_set_state({'health_problems':
+                {'test_monitor':
+                    {'can_be_replica': False, 'reason': 'Waiting for first check'}}})
             ]
     # Carry on running afterwards
     assert timeout == None
@@ -259,6 +268,7 @@ def test_replica_start(app):
     plugins.reset_mock()
     app.healthy('test_monitor')
     assert plugins.mock_calls ==  [
+            call.dcs_set_state({'health_problems': {}}),
             call.postgresql_am_i_replica(),
             call.dcs_set_conn({'a': 'b'}),
            ]

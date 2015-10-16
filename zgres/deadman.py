@@ -1,6 +1,7 @@
 import sys
 import time
 import uuid
+from copy import deepcopy
 import asyncio
 import logging
 import argparse
@@ -130,7 +131,7 @@ class App:
     def __init__(self, config):
         self.health_problems = {}
         self._conn_info = {}
-        self._state_info = {}
+        self._state = {}
         self.config = config
         self.tick_time = 1 # 1 second
         self._setup_plugins()
@@ -223,13 +224,26 @@ class App:
         self.logger.info('Starting monitors')
         self._plugins.start_monitoring()
         self.healthy('zgres.initialize')
-        if not am_replica and self.health_problems:
-            # I am an unhealthy master with the lock,
-            # This is a wierd situation becase another master should have taken over before
-            # we restarted and got the lock. let's check in a little while if we become healthy,
-            # else try failover again
-            self._loop.call_later(600, self._loop.create_task, self._handle_unhealthy_master())
+        if self.health_problems:
+            if not am_replica:
+                # I am an unhealthy master with the lock,
+                # This is a wierd situation becase another master should have taken over before
+                # we restarted and got the lock. let's check in a little while if we become healthy,
+                # else try failover again
+                self._loop.call_later(600, self._loop.create_task, self._handle_unhealthy_master())
         return None
+
+    def update_state(self, _force=False, **kw):
+        changed = _force
+        for k, v in kw.items():
+            v = deepcopy(v) # for reliable change detection on mutable args
+            existing = self._state.get(k, _missing)
+            if v != existing:
+                changed = True
+                self._state[k] = v
+        if changed and 'zgres.initialize' not in self.health_problems:
+            # don't update state in the DCS till we are finished updating
+            self._plugins.dcs_set_state(self._state)
 
     def master_lock_changed(self, owner):
         """Respond to a change in the maser lock"""
@@ -248,33 +262,46 @@ class App:
     def am_i_best_replica(self):
         nodes = [(wal_sort_key(state), id, state) for id, state in self._plugins.dcs_get_all_state()]
         nodes.sort()
-        print(nodes)
         best_key = None
+        the_best = []
         for sort_key, id, state in nodes:
-            if not state['willing_replica'] and state['pg_is_in_recovery']:
-                continue
             if best_key is None:
+                # first key is the best hey
                 best_key = sort_key
             if sort_key != best_key:
                 continue
-            if id == self.my_id:
-                # perform final check to see if I am willing
-                if state['pg_last_xlog_replay_location'] != state['pg_last_xlog_receive_location']:
-                    self.logger.info('I have recieved the most logs, but not replayed them all yet, waiting a bit')
-                    return False
-                return True
+            the_best.append(id)
+            if id != self.my_id:
+                continue
+            if state['health_problems']:
+                self.logger.info('Disqualifying myself because of health problems')
+                continue
+            if not state['pg_is_in_recovery']:
+                self.logger.info('I am alreay a master.')
+                continue
+            # perform final check to see if I am willing
+            if state['pg_last_xlog_replay_location'] != state['pg_last_xlog_receive_location']:
+                self.logger.info('I have recieved the most logs, but not replayed them all yet, waiting a bit')
+                return False
+            return True
+        self.logger.info('Not the best replica because these nodes were better than me: {}'.format(the_best))
         return False
 
     async def _try_takeover(self):
         while True:
+            self.logger.info('Sleeping a little to allow state to be updated in the DCS before trying to take over')
             await asyncio.sleep(3) # let replicas update their state
             # The master is still missing and we should decide if we must take over
             if self._master_lock_owner is not None:
+                self.logger.info('There is a new master: {}, stop trying to take over'.format(self._master_lock_owner))
                 break
             if self.am_i_best_replica():
                 # try get the master lock, if this suceeds, master_lock_change will be called again
                 # and will bring us out of replication
+                self.logger.info('I am one of the best, trying to get the master lock')
                 self._plugins.dcs_lock('master')
+            else:
+                self.logger.info('I am not yet the best replica, giving the others a chance')
 
     def unhealthy(self, key, reason, can_be_replica=False):
         """Plugins call this if they want to declare the instance unhealthy.
@@ -282,6 +309,7 @@ class App:
         If an instance is unhealthy, but can continue to serve as a replica, set can_be_replica=True
         """
         self.health_problems[key] = dict(reason=reason, can_be_replica=can_be_replica)
+        self.update_state(health_problems=self.health_problems)
         if 'zgres.initialize' in self.health_problems:
             return
         logging.warn('I am unhelthy: ({}) {}'.format(key, reason))
@@ -307,6 +335,7 @@ class App:
         reason = self.health_problems.pop(key, _missing)
         if reason is _missing:
             return # no-op, we were already healthy
+        self.update_state(health_problems=self.health_problems)
         logging.warn('Stopped being unhealthy for this reason: ({}) {}'.format(key, reason))
         if self.health_problems:
             logging.warn('I am still unhelthy for these reasons: {}'.format(self.health_problems))
