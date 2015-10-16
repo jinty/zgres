@@ -5,8 +5,21 @@ from asyncio import sleep
 import logging
 from subprocess import check_output, call, check_call
 
+import psycopg2
+
 from . import systemd
 from .plugin import subscribe
+
+def _pg_controldata_value(pg_version, data_dir, key):
+    data = check_output([
+        '/usr/lib/postgresql/{}/bin/pg_controldata'.format(pg_version),
+        data_dir])
+    data = data.decode('latin-1') # I don't care, don't fail, the data I am interested in is ascii
+    for line in data.splitlines():
+        k, value = line.split(':', 1)
+        if k == key:
+            return value.strip()
+    raise ValueError('could not find value for "{}"'.format(key))
 
 class AptPostgresqlPlugin:
     """Plugin for controlling postgresql installed by apt.
@@ -88,16 +101,30 @@ class AptPostgresqlPlugin:
     def pg_get_database_identifier(self):
         if not os.path.exists(self._config_file()):
             return None
-        data = check_output([
-            '/usr/lib/postgresql/{}/bin/pg_controldata'.format(self._version),
-            self._data_dir()])
-        data = data.decode('latin-1') # I don't care, don't fail, the data I am interested in is ascii
-        for line in data.splitlines():
-            if line.startswith('Database system identifier:'):
-                _, dbid = line.split(':', 1)
-                dbid = dbid.strip()
-                return dbid
-        return None
+        return _pg_controldata_value(self._version, self._data_dir(), 'Database system identifier')
+
+    def _conn(self):
+        info = self.pg_conn_info()
+        return psycopg2.connect(**kw)
+
+    @subscribe
+    def pg_get_timeline(self):
+        if not os.path.exists(self._config_file()):
+            return None
+        if self._is_active():
+            conn = self._conn()
+            cur = conn.cursor()
+            cur.execute('SELECT pg_xlogfile_name(pg_current_xlog_insert_location());')
+            wal_filename = cur.fetchall()[0][0]
+            timeline_hex = wal_filename[:8]
+            return int(timeline_hex, 16)
+        else:
+            val = _pg_controldata_value(
+                    self._version,
+                    self._data_dir(),
+                    "Latest checkpoint's TimeLineID")
+            return int(val)
+        return int(val)
 
     @subscribe
     def pg_start(self):
@@ -107,6 +134,14 @@ class AptPostgresqlPlugin:
     @subscribe
     def pg_stop(self):
         check_call(['systemctl', 'stop', self._service()])
+
+    @subscribe
+    def pg_reset(self):
+        self.pg_stop()
+        try:
+            check_call(['pg_dropcluster', '--stop', self._version, self._cluster_name])
+        except:
+            check_call(['rm', '-rf', self._data_dir(), self._config_dir])
 
     @subscribe
     def pg_initdb(self):
@@ -126,6 +161,10 @@ class AptPostgresqlPlugin:
         return dict(database='postgres', user=self._superuser_connect_as, host=self._socket_dir(), port=self._port())
 
     @subscribe
+    def get_conn_info(self):
+        return dict(port=self._port())
+
+    @subscribe
     def pg_am_i_replica(self):
         return os.path.exists(os.path.join(self._data_dir(), 'recovery.conf'))
 
@@ -135,15 +174,45 @@ class AptPostgresqlPlugin:
         loop = asyncio.get_event_loop()
         loop.call_soon(loop.create_task, self._monitor_systemd())
 
+    def _is_active(self):
+        return 0 == call(['systemctl', 'is-active', self._service()])
+
     async def _monitor_systemd(self):
         loop = asyncio.get_event_loop()
         while True:
             await sleep(1)
-            status = call(['systemctl', 'is-active', self._service()])
-            if status == 0:
+            if self._is_active():
                 self.app.healthy(self._health_check_key)
             else:
                 await sleep(2)
-                status = call(['systemctl', 'is-active', self._service()])
-                if status != 0:
+                if not self._is_active():
                     self.app.unhealthy(self._health_check_key, 'inactive according to systemd')
+
+    def _trigger_file(self):
+        return '/var/run/postgresql/{}-{}.master_trigger'.format(self._version, self._cluster_name)
+
+    @subscribe
+    def pg_stop_replication(self):
+        trigger_file = self._trigger_file()
+        with open(trigger_file, 'w') as f:
+            f.write('touched')
+
+    @subscribe
+    def pg_setup_replication(self, host, port):
+        trigger_file = self._trigger_file()
+        if os.path.exists(trigger_file):
+            os.remove(trigger_file)
+        config = """standby_mode = 'on'
+primary_conninfo = 'host={host} port={port}
+trigger_file = '{trigger_file}'
+recovery_target_timeline = 'latest'
+"""
+        config = config.format(
+                trigger_file=trigger_file,
+                host=host,
+                port=port)
+        restore_command = self.app.config['apt'].get('restore_command', None)
+        if restore_command:
+            config += "restore_command = '{restore_command}'".format(restore_command)
+        with open(os.path.join(self._data_dir(), 'recovery.conf'), 'w') as f:
+            f.write(config)

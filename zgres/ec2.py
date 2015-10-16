@@ -11,6 +11,27 @@ from subprocess import check_call
 from .utils import pg_lsn_to_int
 from .plugin import subscribe
 
+class Ec2Plugin:
+
+    def __init__(self, name, app):
+        pass
+
+    @subscribe
+    def initialize(self):
+        self._metadata = boto.utils.get_instance_metadata()
+
+    @subscribe
+    def get_my_id(self):
+        return self._metadata['instance-id']
+
+    @subscribe
+    def get_conn_info(self):
+        return {
+                'host': self._metadata['local-ipv4'],
+                'instance-type': self._metadata['instance-type'],
+                'availability-zone': self._metadata['placement']['availability-zone'],
+                }
+
 class Ec2SnapshotBackupPlugin:
 
     _backing_up = asyncio.Lock()

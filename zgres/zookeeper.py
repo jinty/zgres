@@ -314,12 +314,11 @@ class ZooKeeperDeadmanPlugin:
 
     @subscribe
     def dcs_unlock(self, name):
-        owner = self.dcs_get_lock_owner(name)
+        owner = self._get_lock_owner(name)
         if owner == self.app.my_id:
             self._zk.delete(self._lock_path(name))
 
-    @subscribe
-    def dcs_get_lock_owner(self, name):
+    def _get_lock_owner(self, name):
         try:
             owner, stat = self._zk.get(self._lock_path(name))
         except kazoo.exceptions.NoNodeError:
