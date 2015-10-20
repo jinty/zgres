@@ -7,6 +7,7 @@ import pytest
 from . import FakeSleeper
 
 def have_root():
+    print(dict(os.environ))
     destroy = os.environ.get('ZGRES_DESTROY_MACHINE', 'false').lower()
     if destroy in ['t', 'true']: 
         user = check_output(['whoami'])
