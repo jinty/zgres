@@ -30,6 +30,8 @@ def app():
     plugins = app._plugins
     return app
 
+NO_SUBSCRIBER = object()
+
 def setup_plugins(app, **kw):
     plugins = app._plugins
     from ..deadman import _PLUGIN_API
@@ -42,6 +44,8 @@ def setup_plugins(app, **kw):
             'pg_get_timeline': 1,
             'dcs_get_timeline': 1,
             'get_conn_info': [('database', dict(host='127.0.0.1'))],
+            'conn_info': NO_SUBSCRIBER,
+            'state': NO_SUBSCRIBER,
             'get_my_id': get_my_id,
             'dcs_get_database_identifier': '12345',
             'pg_get_database_identifier': '12345',
@@ -52,11 +56,16 @@ def setup_plugins(app, **kw):
     for k, v in defaults.items():
         for i in _PLUGIN_API:
             if k == i['name']:
-                if i['type'] == 'multiple':
+                if i['type'] == 'multiple' and v is not NO_SUBSCRIBER:
                     # assert that our test plugin data is really unpackable
                     z = [(i, k) for i, k in v]
                     v = iter(z) # make it a real iterable
                 break
+        if v is NO_SUBSCRIBER:
+            assert not i['required'], k
+            # no plugin provides this event
+            setattr(plugins, k, None)
+            continue
         getattr(plugins, k).return_value = v
     return plugins
 
@@ -125,6 +134,7 @@ def test_replica_bootstrap(app):
             call.pg_stop(),
             # postgresql restore
             call.pg_restore(),
+            call.pg_setup_replication(),
             call.pg_am_i_replica()
             ]
     # shut down cleanly and immediately
@@ -146,6 +156,7 @@ def test_replica_bootstrap_fails_sanity_test(app):
             call.pg_stop(),
             # postgresql restore
             call.pg_restore(),
+            call.pg_setup_replication(),
             call.pg_am_i_replica(),
             call.pg_reset(),
             ]
@@ -178,6 +189,7 @@ async def test_master_start(app):
             call.pg_start(),
             # start monitoring
             call.start_monitoring(),
+            call.dcs_watch(conn_info=False, state=False),
             call.get_conn_info(),
             # set our first state
             call.dcs_set_state({
@@ -197,7 +209,7 @@ async def test_master_start(app):
                 'health_problems': {}}),
             call.pg_am_i_replica(),
             call.dcs_lock('master'),
-            call.dcs_set_conn({'host': '127.0.0.1'}),
+            call.dcs_set_conn_info({'host': '127.0.0.1'}),
            ]
 
 def test_failed_over_master_start(app):
@@ -253,6 +265,7 @@ def test_replica_start(app):
             call.pg_start(),
             # start monitoring
             call.start_monitoring(),
+            call.dcs_watch(conn_info=False, state=False),
             # setup our connection info
             call.get_conn_info(),
             # set our first state
@@ -275,8 +288,41 @@ def test_replica_start(app):
                 'host': '127.0.0.1',
                 }),
             call.pg_am_i_replica(),
-            call.dcs_set_conn({'a': 'b', 'host': '127.0.0.1'}),
+            call.dcs_set_conn_info({'a': 'b', 'host': '127.0.0.1'}),
            ]
+
+def test_plugin_subscribe_to_conn_info(app):
+    plugins = setup_plugins(app,
+            conn_info=[('pluginA', None)],
+            )
+    app.initialize()
+    assert plugins.dcs_watch.mock_calls ==  [
+            call.dcs_watch(conn_info=True, state=False),
+            ]
+    assert plugins.conn_info.mock_calls == []
+    plugins.conn_info({1: 2})
+    assert plugins.conn_info.mock_calls == [call({1: 2})]
+
+def test_plugin_subscribe_to_state(app):
+    plugins = setup_plugins(app,
+            state=[('pluginA', None)],
+            )
+    app.initialize()
+    assert plugins.dcs_watch.mock_calls ==  [
+            call.dcs_watch(state=True, conn_info=False),
+            ]
+    assert plugins.state.mock_calls == []
+    plugins.state({1: 2})
+    assert plugins.state.mock_calls == [call({1: 2})]
+
+def test_plugin_tells_app_to_follow_new_leader(app):
+    plugins = setup_plugins(app)
+    app.initialize()
+    plugins.reset_mock()
+    app.follow(primary_conninfo=dict(host='127.0.0.9', port=5432))
+    assert plugins.mock_calls == [
+            call.pg_setup_replication(primary_conninfo={'port': 5432, 'host': '127.0.0.9'}),
+            call.pg_reload()]
 
 def test_restart_master(app):
     plugins = setup_plugins(app,

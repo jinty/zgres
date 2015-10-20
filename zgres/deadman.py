@@ -22,6 +22,13 @@ _PLUGIN_API = [
             required=False,
             type='single'),
 
+        dict(name='state', # subscribe to changes in cluster state
+            required=False,
+            type='multiple'),
+        dict(name='conn_info', # subscribe to changes in cluster connection info
+            required=False,
+            type='multiple'),
+
         ######### Dealing with the Distributed Configuration system
         # set the database identifier, return True if it can be set, false if not.
         dict(name='dcs_set_database_identifier',
@@ -45,6 +52,10 @@ _PLUGIN_API = [
             required=True,
             type='multiple'),
 
+        dict(name='dcs_watch',
+            required=True,
+            type='multiple'),
+
         dict(name='dcs_delete_state',
             required=True,
             type='multiple'),
@@ -58,7 +69,7 @@ _PLUGIN_API = [
         dict(name='dcs_delete_conn',
             required=True,
             type='multiple'),
-        dict(name='dcs_set_conn',
+        dict(name='dcs_set_conn_info',
             required=True,
             type='multiple'),
         dict(name='dcs_get_all_conn',
@@ -87,6 +98,9 @@ _PLUGIN_API = [
         dict(name='pg_start',
             required=True,
             type='multiple'),
+        dict(name='pg_reload',
+            required=True,
+            type='multiple'),
         # halt: should prevent the existing database from running again.
         # either stop the whole machine, move data directory aside, pg_rewind or prepare for re-bootstrapping as a slave
         dict(name='pg_reset',
@@ -96,7 +110,10 @@ _PLUGIN_API = [
         dict(name='pg_initdb',
             required=True,
             type='multiple'),
-        dict(name='pg_stop_replication', # implement
+        dict(name='pg_stop_replication',
+            required=True,
+            type='multiple'),
+        dict(name='pg_setup_replication',
             required=True,
             type='multiple'),
 
@@ -104,7 +121,7 @@ _PLUGIN_API = [
         dict(name='pg_backup',
             required=True,
             type='multiple'),
-        dict(name='pg_restore', # XXX -setup replication
+        dict(name='pg_restore',
             required=True,
             type='multiple'),
         dict(name='pg_am_i_replica',
@@ -158,9 +175,21 @@ class App:
                 _PLUGIN_API,
                 self)
 
+    def conn_info(self, databases):
+        self._plugins.conn_info(databases)
+
+    def state(self, databases):
+        self._plugins.state(databases)
+
+    def follow(self, primary_conninfo): 
+        # Change who we are replicating from
+        self._plugins.pg_setup_replication(primary_conninfo=primary_conninfo)
+        self._plugins.pg_reload()
+
     def replica_bootstrap(self):
         self._plugins.pg_stop()
         self._plugins.pg_restore()
+        self._plugins.pg_setup_replication()
         if not self._plugins.pg_am_i_replica():
             # destroy our current cluster
             self._plugins.pg_reset()
@@ -233,6 +262,10 @@ class App:
         self._plugins.pg_start()
         self.logger.info('Starting monitors')
         self._plugins.start_monitoring()
+        self.logger.info('Starting to watch the DCS for events')
+        self._plugins.dcs_watch(
+                state=self._plugins.state and True or False,
+                conn_info=self._plugins.conn_info and True or False)
         self._get_conn_info_from_plugins()
         self.healthy('zgres.initialize')
         if self.health_problems:
@@ -388,7 +421,7 @@ class App:
             self._set_conn_info()
 
     def _set_conn_info(self):
-        self._plugins.dcs_set_conn(self._conn_info)
+        self._plugins.dcs_set_conn_info(self._conn_info)
 
     @classmethod
     def run(cls, config):

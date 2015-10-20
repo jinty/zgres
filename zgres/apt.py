@@ -89,13 +89,19 @@ class AptPostgresqlPlugin:
             destination = self._config_file(filename)
             shutil.copyfile(source, destination)
 
-    def _set_config_values(self):
+    def _set_config_values(self, prefix=None):
+        changed = False
         for k, v in self.app.config['apt'].items():
+            if not k.startswith(prefix):
+                continue
+            k = k[len(prefix):]
             if not k.startswith('postgresql.conf.'):
                 continue
             k = k[16:]
             v = v.strip()
+            changed = True
             self._set_conf_value(k, v)
+        return changed
 
     @subscribe
     def pg_get_database_identifier(self):
@@ -128,8 +134,11 @@ class AptPostgresqlPlugin:
 
     @subscribe
     def pg_start(self):
-        self._set_config_values()
         check_call(['systemctl', 'start', self._service()])
+
+    @subscribe
+    def pg_reload(self):
+        check_call(['systemctl', 'reload', self._service()])
 
     @subscribe
     def pg_stop(self):
@@ -193,17 +202,18 @@ class AptPostgresqlPlugin:
 
     @subscribe
     def pg_stop_replication(self):
+        if self._set_config_values('master.'):
+            self.pg_reload()
         trigger_file = self._trigger_file()
         with open(trigger_file, 'w') as f:
             f.write('touched')
 
     @subscribe
-    def pg_setup_replication(self, host, port):
+    def pg_setup_replication(self, primary_conninfo=None):
         trigger_file = self._trigger_file()
         if os.path.exists(trigger_file):
             os.remove(trigger_file)
         config = """standby_mode = 'on'
-primary_conninfo = 'host={host} port={port}
 trigger_file = '{trigger_file}'
 recovery_target_timeline = 'latest'
 """
@@ -212,7 +222,13 @@ recovery_target_timeline = 'latest'
                 host=host,
                 port=port)
         restore_command = self.app.config['apt'].get('restore_command', None)
+        if primary_conninfo:
+            parts = []
+            for k, v in primary_conninfo.items():
+                parts.append('{}={}'.format(k, v))
+            config += "\nprimary_conninfo = '{}'".format(' '.join(parts))
         if restore_command:
-            config += "restore_command = '{restore_command}'".format(restore_command)
+            config += "\nrestore_command = '{restore_command}'".format(restore_command)
         with open(os.path.join(self._data_dir(), 'recovery.conf'), 'w') as f:
             f.write(config)
+        self._set_config_values('replica.')

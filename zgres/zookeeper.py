@@ -9,6 +9,8 @@ from kazoo.client import KazooClient, KazooState
 
 from .plugin import subscribe
 
+_missing = object()
+
 def state_to_databases(state, get_state):
     """Convert the state to a dict of connectable database clusters.
 
@@ -80,6 +82,9 @@ class DictWatch(Mapping):
         * to_value is the value which is being set
         * from_value is the value which was there previously
 
+    The callack WILL be called in the main thread and the order of events from
+    zookeeper will be maintained.
+
     On add from_value is DictWatch.MISSING, on delete, to value will be
     DictWatch.MISSING.
 
@@ -90,7 +95,7 @@ class DictWatch(Mapping):
 
     MISSING = object()
 
-    def __init__(self, zk, path, callback):
+    def __init__(self, zk, path, callback, prefix=None):
         self._zk = zk
         self._callback = callback
         self._state = {}
@@ -100,6 +105,7 @@ class DictWatch(Mapping):
         self._child_watchers = {}
         self._loop = asyncio.get_event_loop()
         self._zk_event_queue = queue.Queue()
+        self._prefix = prefix
         self._watch()
 
     def _watch(self):
@@ -159,6 +165,9 @@ class DictWatch(Mapping):
     def _children_changed(self, children):
         to_add = set(children) - set(self._child_watchers)
         for node in to_add:
+            if self._prefix is not None:
+                if not node.startswith(self._prefix):
+                    continue
             self._child_watchers[node] = self._watch_node(node)
 
 
@@ -189,6 +198,13 @@ class ZooKeeperSource:
             app.conn_info(connection_info)
             self._old_connection_info = connection_info
 
+def _get_clusters(in_dict):
+    out_dict = {}
+    for k, v in in_dict.items():
+        group_name, cluster_id = k.split('-')
+        out_dict.setdefault(group_name, {})[cluster_id] = v
+    return out_dict
+
 class ZooKeeperDeadmanPlugin:
 
     def __init__(self, name, app):
@@ -198,10 +214,13 @@ class ZooKeeperDeadmanPlugin:
         self.tick_time = app.tick_time # seconds: this should match the zookeeper server tick time (normally specified in milliseconds)
 
 
-    def _path(self, type, name=None):
-        if name is None:
+    def _path(self, type, name=_missing):
+        if name is _missing:
             name = self.app.my_id
-        return self._path_prefix + type + '/' + self._group_name + '-' + name
+        if name:
+            return self._path_prefix + type + '/' + self._group_name + '-' + name
+        else:
+            return self._path_prefix + type
 
     def _lock_path(self, name):
         return self._path('lock', name)
@@ -216,7 +235,8 @@ class ZooKeeperDeadmanPlugin:
         if not self._path_prefix.endswith('/'):
             self._path_prefix += '/'
         self._group_name = self.app.config['zookeeper']['group'].strip()
-        assert '/' not in self._group_name
+        if '/' in self._group_name or '-' in self._group_name:
+            raise ValueError('cannot have - or / in the group name')
 
     def _session_state_threadsafe(self, state):
         self._loop.call_soon_threadsafe(self._loop.create_task, self._session_state(state))
@@ -286,10 +306,31 @@ class ZooKeeperDeadmanPlugin:
             data = b'0'
         return int(data.decode('ascii'))
 
+    def _notify_state(self, state, key, from_val, to_val):
+        self.app.state(_get_clusters(state).get(self._group_name, {}))
+
+    def _notify_conn(self, state, key, from_val, to_val):
+        self.app.conn_info(_get_clusters(state).get(self._group_name, {}))
+
+    def _dict_watcher(self, what):
+        hook = getattr(self, '_notify_' + what)
+        path = self._path(what, name=None)
+        prefix = self._group_name
+        try:
+            watch = DictWatch(self._zk, path, hook, prefix=prefix)
+        except kazoo.exceptions.NoNodeError:
+            self._zk.create(path, makepath=True)
+            return self._dict_watcher(what)
+        return watch
+
     @subscribe
-    def start_monitoring(self):
+    def dcs_watch(self, state=None, conn_info=None):
         path = self._lock_path('master')
         self._monitors['master_lock_watch'] = self._zk.DataWatch(path, self._master_lock_changes)
+        if state:
+            self._state_watcher = self._dict_watcher('state')
+        if conn_info:
+            self._state_watcher = self._dict_watcher('conn')
 
     def _master_lock_changes(self, data, stat, event):
         if data is not None:
@@ -334,7 +375,7 @@ class ZooKeeperDeadmanPlugin:
             self._zk.create(self._path(type), data, ephemeral=True, makepath=True)
 
     @subscribe
-    def dcs_set_conn(self, data):
+    def dcs_set_conn_info(self, data):
         return self._set_info('conn', data)
 
     @subscribe

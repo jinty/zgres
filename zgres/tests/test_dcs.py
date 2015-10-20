@@ -80,9 +80,9 @@ def test_dont_unlock_others(pluginAB):
 
 def test_set_delete_conn(pluginAB):
     pluginA, pluginB = pluginAB
-    pluginA.dcs_set_conn(dict(answer=42))
+    pluginA.dcs_set_conn_info(dict(answer=42))
     assert sorted(pluginA.dcs_get_all_conn()) == [('A', dict(answer=42))]
-    pluginB.dcs_set_conn(dict(answer='X'))
+    pluginB.dcs_set_conn_info(dict(answer='X'))
     assert sorted(pluginA.dcs_get_all_conn()) == [('A', dict(answer=42)), ('B', dict(answer='X'))]
     assert sorted(pluginB.dcs_get_all_conn()) == [('A', dict(answer=42)), ('B', dict(answer='X'))]
     assert sorted(pluginA.dcs_get_all_state()) == []
@@ -91,7 +91,7 @@ def test_set_delete_conn(pluginAB):
 
 def test_set_delete_info_is_idempotent(plugin):
     plugin = plugin()
-    plugin.dcs_set_conn(dict(server=42))
+    plugin.dcs_set_conn_info(dict(server=42))
     plugin.dcs_delete_conn()
     plugin.dcs_delete_conn()
 
@@ -99,7 +99,7 @@ def test_info_is_ephemeral(plugin):
     # 2 servers with the same id should NOT happen in real life...
     pluginA = plugin(my_id='A')
     pluginA2 = plugin(my_id='A')
-    pluginA.dcs_set_conn(dict(server=42))
+    pluginA.dcs_set_conn_info(dict(server=42))
     assert sorted(pluginA.dcs_get_all_conn()) == [('A', dict(server=42))]
     assert sorted(pluginA2.dcs_get_all_conn()) == [('A', dict(server=42))]
     pluginA.dcs_disconnect()
@@ -108,7 +108,7 @@ def test_info_is_ephemeral(plugin):
 @pytest.mark.asyncio
 async def test_master_lock_notification(plugin):
     pluginA, pluginB = plugin('A'), plugin('B')
-    pluginB.start_monitoring() # None
+    pluginB.dcs_watch()
     await asyncio.sleep(0.001)
     pluginA.dcs_lock('master') # A
     await asyncio.sleep(0.001)
@@ -165,4 +165,55 @@ def test_timelines_persist(pluginAB):
     pluginA.dcs_set_timeline(49)
     pluginA.dcs_disconnect()
     assert pluginB.dcs_get_timeline() == 49
+
+@pytest.mark.asyncio
+async def test_notifications_of_state_chagnges(plugin):
+    pluginA, pluginB, pluginC = plugin('A'), plugin('B'), plugin('C')
+    pluginC._group_name = 'another'
+    # pluginB watches state, plugin A doesn't
+    pluginA.dcs_watch(state=False)
+    pluginB.dcs_watch(state=True)
+    pluginC.dcs_watch(state=True)
+    # set state from both plugins
+    pluginA.dcs_set_state(dict(name='A'))
+    pluginB.dcs_set_state(dict(name='B'))
+    pluginC.dcs_set_state(dict(name='C'))
+    await asyncio.sleep(0.003)
+    # pluginA does NOT call it's app when the state changes
+    assert pluginA.app.state.mock_calls == []
+    # pluginB gets events, but ONLY from plugins in its group
+    # i.e. c is ignored
+    # NOTE: we test only the LAST call as state for A and B may come out-of-order
+    #       but the final, rest state, should be correct
+    assert pluginB.app.state.mock_calls[-1] == mock.call({'A': {'name': 'A'}, 'B': {'name': 'B'}})
+    # C got it's own event
+    assert pluginC.app.state.mock_calls == [
+            mock.call({'C': {'name': 'C'}}),
+            ]
+
+@pytest.mark.asyncio
+async def test_notifications_of_conn_chagnges(plugin):
+    pluginA, pluginB, pluginC = plugin('A'), plugin('B'), plugin('C')
+    pluginC._group_name = 'another'
+    # pluginB watches conn, plugin A doesn't
+    pluginA.dcs_watch(conn_info=False)
+    pluginB.dcs_watch(conn_info=True)
+    pluginC.dcs_watch(conn_info=True)
+    # set conn from both plugins
+    pluginA.dcs_set_conn_info(dict(name='A'))
+    pluginB.dcs_set_conn_info(dict(name='B'))
+    pluginC.dcs_set_conn_info(dict(name='C'))
+    await asyncio.sleep(0.005) #sigh, the DCS may use threading, give that a chance
+    # pluginA does NOT call it's app when the conn changes
+    assert pluginA.app.conn_info.mock_calls == []
+    # pluginB gets events, but ONLY from plugins in its group
+    # i.e. c is ignored
+    # NOTE: we test only the LAST call as conn for A and B may come out-of-order
+    #       but the final, rest conn, should be correct
+    assert pluginB.app.conn_info.mock_calls[-1] == mock.call({'A': {'name': 'A'}, 'B': {'name': 'B'}})
+    # C got it's own event
+    assert pluginC.app.conn_info.mock_calls == [
+            mock.call({'C': {'name': 'C'}}),
+            ]
+
 
