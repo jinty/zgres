@@ -20,6 +20,7 @@ setup(name="zgres",
           'zgres.deadman': [
               'apt = zgres.apt:AptPostgresqlPlugin',
               'ec2 = zgres.ec2:Ec2Plugin',
+              'follow-the-leader = zgres.replication:FollowTheLeader',
               'ec2-snapshot = zgres.ec2:Ec2SnapshotBackupPlugin',
               'zookeeper = zgres.zookeeper:ZooKeeperDeadmanPlugin',
               ],
