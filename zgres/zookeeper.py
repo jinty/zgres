@@ -213,7 +213,6 @@ class ZooKeeperDeadmanPlugin:
         self._monitors = {}
         self.tick_time = app.tick_time # seconds: this should match the zookeeper server tick time (normally specified in milliseconds)
 
-
     def _path(self, type, name=_missing):
         if name is _missing:
             name = self.app.my_id
