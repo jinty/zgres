@@ -64,7 +64,7 @@ def readGitVersion():
     try:
         proc = subprocess.Popen(('git', 'describe', '--long',
                                  '--match', 'release/[0-9.]*'),
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                stdout=subprocess.PIPE)
         data, _ = proc.communicate()
         data = data.decode('utf-8')
         if proc.returncode:
