@@ -4,7 +4,7 @@ python:
 install:
     - travis_retry pip install tox
 script:
-    - sudo -E tox
+    - sudo env "PATH=$PATH" tox
 notifications:
     email: false
 addons:
