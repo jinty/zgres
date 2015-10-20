@@ -4,11 +4,10 @@ python:
 install:
     - travis_retry pip install tox
 script:
-    - sudo -E env "PATH=$PATH" tox
+    - tox
+    - sudo -E env "PATH=$PATH" ZGRES_DESTROY_MACHINE=true tox
 notifications:
     email: false
 addons:
-  postgresql: "9.3"
+  postgresql: "9.4"
 sudo: true
-env:
-    - ZGRES_DESTROY_MACHINE=true
