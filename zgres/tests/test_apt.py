@@ -12,7 +12,7 @@ def have_root():
     if destroy in ['t', 'true']: 
         user = check_output(['whoami'])
         if user != 'root':
-            raise Exception('I need to run as root if you want me to destroy the machine!')
+            raise Exception('I need to run as root if you want me to destroy the machine! I am {}'.format(repr(user)))
         return True
     return False
 
