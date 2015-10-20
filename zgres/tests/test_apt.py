@@ -57,7 +57,7 @@ async def test_monitoring(plugin):
                 [mock.call(['systemctl', 'is-active', 'postgresql@9.42-answers.service'])] * len(retvals))
 
 @needs_root
-def test_travis(self):
+def test_travis():
     from subprocess import check_call
     check_call(['ls', '/etc/postgresql'])
     assert False, 'boom'
