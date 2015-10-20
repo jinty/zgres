@@ -44,6 +44,7 @@ def setup_plugins(app, **kw):
             'pg_get_timeline': 1,
             'dcs_get_timeline': 1,
             'get_conn_info': [('database', dict(host='127.0.0.1'))],
+            'master_lock_changed': NO_SUBSCRIBER,
             'conn_info': NO_SUBSCRIBER,
             'state': NO_SUBSCRIBER,
             'get_my_id': get_my_id,
@@ -399,6 +400,20 @@ async def test_master_lock_broken(app):
             call.pg_am_i_replica(),
             ]
     assert app._master_lock_owner == app.my_id
+
+@pytest.mark.asyncio
+async def test_plugin_subscribes_to_master_lock_change(app):
+    plugins = setup_plugins(app,
+            pg_get_timeline=42,
+            master_lock_changed=[('pluginA', None)],
+            pg_am_i_replica=True)
+    assert app.initialize() == None
+    plugins.reset_mock()
+    app.master_lock_changed('someone else')
+    assert app._plugins.mock_calls ==  [
+            call.pg_am_i_replica(),
+            call.master_lock_changed('someone else'),
+            ]
 
 @pytest.mark.asyncio
 async def test_replica_reaction_to_master_lock_change(app):

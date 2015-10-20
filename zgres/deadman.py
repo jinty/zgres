@@ -28,6 +28,9 @@ _PLUGIN_API = [
         dict(name='conn_info', # subscribe to changes in cluster connection info
             required=False,
             type='multiple'),
+        dict(name='master_lock_changed', # subscribe to changes in cluster master
+            required=False,
+            type='multiple'),
 
         ######### Dealing with the Distributed Configuration system
         # set the database identifier, return True if it can be set, false if not.
@@ -323,6 +326,8 @@ class App:
                 self.restart(10)
             if owner is None:
                 self._loop.call_soon(self._loop.create_task, self._try_takeover())
+        if self._plugins.master_lock_changed is not None:
+            self._plugins.master_lock_changed(owner)
 
     def am_i_best_replica(self):
         nodes = [(wal_sort_key(state), id, state) for id, state in self._plugins.dcs_get_all_state()]
