@@ -178,7 +178,7 @@ async def test_notifications_of_state_chagnges(plugin):
     pluginA.dcs_set_state(dict(name='A'))
     pluginB.dcs_set_state(dict(name='B'))
     pluginC.dcs_set_state(dict(name='C'))
-    await asyncio.sleep(0.003)
+    await asyncio.sleep(0.005)
     # pluginA does NOT call it's app when the state changes
     assert pluginA.app.state.mock_calls == []
     # pluginB gets events, but ONLY from plugins in its group
