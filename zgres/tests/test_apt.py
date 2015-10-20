@@ -1,8 +1,21 @@
+import os
 from unittest import mock
 import asyncio
+from subprocess import check_output
 
 import pytest
 from . import FakeSleeper
+
+def have_root():
+    destroy = os.environ.get('ZGRES_DESTROY_MACHINE', 'false').lower()
+    if destroy in ['t', 'true']: 
+        user = check_output(['whoami'])
+        if user != 'root':
+            raise Exception('I need to run as root if you want me to destroy the machine!')
+        return True
+    return False
+
+needs_root = pytest.mark.skipif(not have_root(), reason='requires root and ZGRES_DESTROY_MACHINE=true in the environment')
 
 @pytest.fixture
 def plugin():
@@ -41,3 +54,9 @@ async def test_monitoring(plugin):
                 ]
         subprocess_call.assert_has_calls(
                 [mock.call(['systemctl', 'is-active', 'postgresql@9.42-answers.service'])] * len(retvals))
+
+@needs_root
+def test_travis(self):
+    from subprocess import check_call
+    check_call(['ls', '/etc/postgresql'])
+    assert False, 'boom'
