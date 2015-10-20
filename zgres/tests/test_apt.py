@@ -10,7 +10,7 @@ def have_root():
     print(dict(os.environ))
     destroy = os.environ.get('ZGRES_DESTROY_MACHINE', 'false').lower()
     if destroy in ['t', 'true']: 
-        user = check_output(['whoami'])
+        user = check_output(['whoami']).decode('latin1').strip()
         if user != 'root':
             raise Exception('I need to run as root if you want me to destroy the machine! I am {}'.format(repr(user)))
         return True
