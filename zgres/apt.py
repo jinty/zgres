@@ -141,6 +141,7 @@ class AptPostgresqlPlugin:
 
     @subscribe
     def pg_start(self):
+        # TODO: implement pg_hba.conf reconfig to allow cluster nodes to join the cluster automatically
         check_call(['systemctl', 'start', self._service()])
         if not self._is_active():
             raise Exception('Failed to start postgresql')
