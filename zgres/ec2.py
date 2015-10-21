@@ -29,6 +29,7 @@ class Ec2Plugin:
         return {
                 'host': self._metadata['local-ipv4'],
                 'instance-type': self._metadata['instance-type'],
+                'ami-id': self._metadata['ami-id'],
                 'availability-zone': self._metadata['placement']['availability-zone'],
                 }
 
