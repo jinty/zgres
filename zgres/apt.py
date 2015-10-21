@@ -34,7 +34,10 @@ class AptPostgresqlPlugin:
 
     @property
     def _create_superuser(self):
-        return self.app.config['apt'].get('create_superuser', '').lower().strip() in ('t', 'true')
+        must_create = self.app.config['apt'].get('create_superuser', '').lower().strip() in ('t', 'true')
+        if must_create and self._superuser_connect_as is None:
+            raise ValueError('must set superuser_connect_as if create_superuser is True')
+        return must_create
 
     @property
     def _superuser_connect_as(self):
