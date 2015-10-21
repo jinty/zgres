@@ -5,7 +5,7 @@ install:
     - travis_retry pip install tox
 script:
     - tox
-    - sudo -E env "PATH=$PATH" ZGRES_DESTROY_MACHINE=true tox
+    - sudo -E env "PATH=$PATH" tox -e destroy_machine_with_sudo
 notifications:
     email: false
 addons:

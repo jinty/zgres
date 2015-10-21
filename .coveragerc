@@ -1,0 +1,2 @@
+[run]
+omit=zgres/tests/*.py
