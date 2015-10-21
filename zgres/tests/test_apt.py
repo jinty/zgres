@@ -20,7 +20,7 @@ needs_root = pytest.mark.skipif(not have_root(), reason='requires root and ZGRES
 
 @pytest.fixture
 def cluster():
-    return ('9.4', 'zgres-test')
+    return ('9.4', 'zgres_test')
 
 @pytest.fixture
 def plugin(cluster):
