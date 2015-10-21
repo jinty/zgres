@@ -94,7 +94,7 @@ class AptPostgresqlPlugin:
     def _set_config_values(self, prefix=None):
         changed = False
         for k, v in self.app.config['apt'].items():
-            if not k.startswith(prefix):
+            if prefix is not None and not k.startswith(prefix):
                 continue
             k = k[len(prefix):]
             if not k.startswith('postgresql.conf.'):
