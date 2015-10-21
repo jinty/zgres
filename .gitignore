@@ -1,4 +1,5 @@
 /zgres.egg-info
+/htmlcov
 /dist
 *.pyc
 *.pyo
