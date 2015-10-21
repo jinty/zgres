@@ -29,7 +29,8 @@ def plugin(cluster):
     app.config = dict(
             apt=dict(
                 postgresql_version=pg_version,
-                postgresql_cluster_name=cluster_name))
+                postgresql_cluster_name=cluster_name,
+                create_superuser=True))
     from ..apt import AptPostgresqlPlugin
     return AptPostgresqlPlugin('zgres#apt', app)
 
