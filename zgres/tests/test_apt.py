@@ -30,10 +30,21 @@ def plugin(cluster):
             apt=dict(
                 postgresql_version=pg_version,
                 postgresql_cluster_name=cluster_name,
-                superuser_connect_as='root'))
+                superuser_connect_as='root',
                 create_superuser='True'))
     from ..apt import AptPostgresqlPlugin
     return AptPostgresqlPlugin('zgres#apt', app)
+
+@pytest.fixture
+def running_plugin(request, plugin, cluster):
+    # shortcut to a running cluster
+    plugin.pg_initdb()
+    plugin.pg_start()
+    def end():
+        plugin.pg_stop()
+        check_call(['pg_dropcluster'] + list(cluster))
+    request.addfinalizer(end)
+    return plugin
 
 def test_config_file(plugin, cluster):
     assert plugin._config_file(name='pg_hba.conf') == '/etc/postgresql/{}/{}/pg_hba.conf'.format(*cluster)
@@ -65,14 +76,42 @@ async def test_monitoring(plugin, cluster):
                     ] * len(retvals))
 
 @needs_root
-def test_travis(plugin, cluster):
+def test_double_initdb(plugin, cluster):
+    plugin.pg_initdb()
+    plugin.pg_initdb()
+    check_call(['pg_dropcluster'] + list(cluster))
+
+@needs_root
+def test_init_start_stop_drop(plugin, cluster):
     plugin.pg_initdb()
     plugin.pg_start()
     conn_info = plugin.pg_connect_info()
     with psycopg2.connect(**conn_info) as conn:
         with conn.cursor() as cur:
-            cur.execute('SELECT version(), current_database();')
-            got_ver, got_db = cur.fetchall()[0]
-    assert got_ver == cluster[0]
-    assert got_db == 'PostgreSQL {}'.format(cluster[1])
+            cur.execute("SELECT version(), current_setting('hba_file');")
+            got_ver, hba_file = cur.fetchall()[0]
+    assert got_ver.startswith('PostgreSQL {}'.format(cluster[0])), got_ver
+    assert hba_file == plugin._config_file(name='pg_hba.conf')
+    plugin.pg_stop()
+    with pytest.raises(psycopg2.OperationalError):
+        conn = psycopg2.connect(**conn_info)
     check_call(['pg_dropcluster'] + list(cluster))
+
+@needs_root
+def test_database_idntifier(running_plugin):
+    # works when db is running
+    ident = running_plugin.pg_get_database_identifier()
+    assert int(ident) > 0
+    # and when it is not
+    running_plugin.pg_stop()
+    assert ident == running_plugin.pg_get_database_identifier()
+    # re-initing gives us a different number
+    running_plugin.pg_initdb()
+    new_ident = running_plugin.pg_get_database_identifier()
+    assert int(new_ident) > 0
+    assert ident != new_ident
+
+@needs_root
+def test_database_identifier_with_no_cluster_setup(plugin):
+    # NOTE: this test may fail if others do not cleanup properly
+    assert plugin.pg_get_database_identifier() == None
