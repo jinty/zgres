@@ -50,7 +50,7 @@ class AptPostgresqlPlugin:
 
     @property
     def _config_dir(self):
-        return self.app.config['apt']['config_dir']
+        return self.app.config['apt'].get('config_dir')
 
     def _pg_config_dir(self):
         return '/etc/postgresql/{}/{}/'.format(self._version, self._cluster_name)
@@ -81,6 +81,8 @@ class AptPostgresqlPlugin:
         return 'postgresql@{}-{}.service'.format(self._version, self._cluster_name)
 
     def _copy_config(self):
+        if not self._config_dir:
+            return
         for filename in ['environment', 'pg_ctl.conf', 'pg_hba.conf', 'pg_ident.conf', 'postgresql.conf', 'start.conf']:
             source = os.path.join(self._config_dir, filename)
             if not os.path.exists(source):
