@@ -38,7 +38,10 @@ class AptPostgresqlPlugin:
 
     @property
     def _superuser_connect_as(self):
-        return self.app.config['apt']['superuser_connect_as'].strip()
+        val = self.app.config['apt'].get('superuser_connect_as')
+        if val is not None:
+            val = val.strip()
+        return val
 
     @property
     def _version(self):
@@ -164,14 +167,18 @@ class AptPostgresqlPlugin:
         check_call(['pg_createcluster', self._version, self._cluster_name])
         self._copy_config()
         self._set_config_values()
-        if self._superuser_connect_as:
+        if self._create_superuser:
             self.pg_start()
             check_call(['sudo', '-u', 'postgres', 'createuser', '-s', '-h', self._socket_dir(), '-p', self._port(), self._superuser_connect_as])
             self.pg_stop()
 
     @subscribe
     def pg_connect_info(self):
-        return dict(database='postgres', user=self._superuser_connect_as, host=self._socket_dir(), port=self._port())
+        info = dict(database='postgres', user=self._superuser_connect_as, host=self._socket_dir(), port=self._port())
+        user = self._superuser_connect_as
+        if user is not None:
+            info['user'] = user
+        return info
 
     @subscribe
     def get_conn_info(self):
