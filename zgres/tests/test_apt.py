@@ -77,9 +77,15 @@ async def test_monitoring(plugin, cluster):
                     ] * len(retvals))
 
 @needs_root
-def test_double_initdb(plugin, cluster):
+def test_idempotent(plugin, cluster):
     plugin.pg_initdb()
     plugin.pg_initdb()
+    plugin.pg_start()
+    plugin.pg_start()
+    plugin.pg_reload()
+    plugin.pg_reload()
+    plugin.pg_stop()
+    plugin.pg_stop()
     check_call(['pg_dropcluster'] + list(cluster))
 
 @needs_root
@@ -101,7 +107,7 @@ def test_init_start_stop_drop(plugin, cluster):
     check_call(['pg_dropcluster'] + list(cluster))
 
 @needs_root
-def test_database_idntifier(running_plugin):
+def test_database_identifier(running_plugin):
     # works when db is running
     ident = running_plugin.pg_get_database_identifier()
     assert int(ident) > 0
@@ -113,6 +119,15 @@ def test_database_idntifier(running_plugin):
     new_ident = running_plugin.pg_get_database_identifier()
     assert int(new_ident) > 0
     assert ident != new_ident
+
+def test_timeline(plugin, cluster):
+    # new db allways start in timeline 1
+    assert plugin.pg_get_timeline() == None
+    plugin.pg_initdb()
+    assert plugin.pg_get_timeline() == 1
+    plugin.pg_stop()
+    assert plugin.pg_get_timeline() == 1
+    check_call(['pg_dropcluster'] + list(cluster))
 
 @needs_root
 def test_database_identifier_with_no_cluster_setup(plugin):
@@ -127,15 +142,57 @@ def test_pg_hba(plugin, cluster):
     hba_file = plugin._config_file(name='pg_hba.conf')
     with open(hba_file, 'r') as f:
         data = f.read()
-    print(repr(data))
     appended = '\n'.join(['',
                           '# added by zgres (key1)',
                           'host replication postgres otherhost trust',
+                          '',
                           '# added by zgres (key2)',
                           'host replication postgres otherhost2 trust',
                           'host replication postgres otherhost3 trust',
                           ''])
     assert data.endswith(appended)
+    check_call(['pg_dropcluster'] + list(cluster))
+
+@needs_root
+def test_pg_hba_replace(plugin, cluster):
+    plugin.app.config['apt']['pg_hba.conf'] = 'replace'
+    plugin.app.config['apt']['pg_hba.conf.key1'] = 'host replication postgres otherhost trust'
+    plugin.app.config['apt']['pg_hba.conf.key2'] = 'host replication postgres otherhost2 trust\nhost replication postgres otherhost3 trust'
+    plugin.pg_initdb()
+    hba_file = plugin._config_file(name='pg_hba.conf')
+    with open(hba_file, 'r') as f:
+        data = f.read()
+    expected = '\n'.join(['# replace by zgres',
+                          '',
+                          '# added by zgres (key1)',
+                          'host replication postgres otherhost trust',
+                          '',
+                          '# added by zgres (key2)',
+                          'host replication postgres otherhost2 trust',
+                          'host replication postgres otherhost3 trust',
+                          ''])
+    assert data == expected
+    check_call(['pg_dropcluster'] + list(cluster))
+
+@needs_root
+def test_pg_hba_prepend(plugin, cluster):
+    plugin.app.config['apt']['pg_hba.conf'] = 'prepend'
+    plugin.app.config['apt']['pg_hba.conf.key1'] = 'host replication postgres otherhost trust'
+    plugin.app.config['apt']['pg_hba.conf.key2'] = 'host replication postgres otherhost2 trust\nhost replication postgres otherhost3 trust'
+    plugin.pg_initdb()
+    hba_file = plugin._config_file(name='pg_hba.conf')
+    with open(hba_file, 'r') as f:
+        data = f.read()
+    expected = '\n'.join(['# prepend by zgres',
+                          '',
+                          '# added by zgres (key1)',
+                          'host replication postgres otherhost trust',
+                          '',
+                          '# added by zgres (key2)',
+                          'host replication postgres otherhost2 trust',
+                          'host replication postgres otherhost3 trust',
+                          ''])
+    assert data.startswith(expected)
     check_call(['pg_dropcluster'] + list(cluster))
 
 @needs_root
@@ -149,6 +206,7 @@ def test_pg_ident(plugin, cluster):
     appended = '\n'.join(['',
                           '# added by zgres (key1)',
                           'pg root postgres',
+                          '',
                           '# added by zgres (key2)',
                           'pg admin postgres',
                           'pg staff postgres',

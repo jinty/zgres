@@ -99,8 +99,6 @@ class AptPostgresqlPlugin:
 
     def _set_config_values(self, prefix=None):
         changed = False
-        pg_hba = {}
-        pg_ident = {}
         for k, v in self.app.config['apt'].items():
             if prefix is not None:
                 if k.startswith(prefix):
@@ -112,30 +110,45 @@ class AptPostgresqlPlugin:
                 v = v.strip()
                 changed = True
                 self._set_conf_value(k, v)
-            elif k.startswith('pg_hba.conf.'):
-                k = k[12:]
-                assert k not in pg_hba
-                pg_hba[k] = v
-            elif k.startswith('pg_ident.conf.'):
-                k = k[14:]
-                assert k not in pg_ident
-                pg_ident[k] = v
-        if pg_ident or pg_hba:
-            changed = True
-        self._append_lines('pg_hba.conf', pg_hba)
-        self._append_lines('pg_ident.conf', pg_ident)
+        changed = self._twiddle_config_file('pg_hba.conf') or changed
+        changed = self._twiddle_config_file('pg_ident.conf') or changed
         return changed
 
-    def _append_lines(self, config_file, lines):
+    def _twiddle_config_file(self, config_file):
+        prefix = config_file + '.'
+        prefix_len = len(prefix)
+        lines = {}
+        for k, v in self.app.config['apt'].items():
+            if k.startswith(prefix):
+                k = k[prefix_len:]
+                assert k not in lines
+                lines[k] = v
         if not lines:
-            return
+            return False
+        mode = self.app.config['apt'].get(config_file, 'append')
+        to_write = ['# {} by zgres'.format(mode)]
+        for key, lines in sorted(lines.items()):
+            to_write.append('')
+            to_write.append('# added by zgres ({})'.format(key))
+            to_write.append(lines)
+        to_write.append('')
         path = self._config_file(name=config_file)
-        with open(path, 'a') as f:
-            f.write('\n')
-            for key, lines in sorted(lines.items()):
-                f.write('# added by zgres ({})\n'.format(key))
-                f.write(lines)
-                f.write('\n')
+        if mode == 'append':
+            with open(path, 'r') as f:
+                currdata = f.read()
+            to_write = [currdata, ''] + to_write
+        elif mode == 'prepend':
+            with open(path, 'r') as f:
+                currdata = f.read()
+            to_write = to_write + [currdata, '']
+        elif mode == 'replace':
+            pass
+        else:
+            raise ValueError(mode)
+        with open(path, 'w') as f:
+            currdata = f.write('\n'.join(to_write))
+        return True
+
     @subscribe
     def pg_get_database_identifier(self):
         if not os.path.exists(self._config_file()):
