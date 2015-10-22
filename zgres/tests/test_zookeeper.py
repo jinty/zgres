@@ -10,6 +10,12 @@ from kazoo.client import KazooState
 from zgres import sync
 from . import FakeSleeper
 
+class MyFakeClient(FakeClient):
+
+    @property
+    def client_id(self):
+        return (self.session_id, 'abc')
+
 @pytest.mark.asyncio
 async def test_functional():
     """Test as much of the whole stack as we can.
@@ -24,7 +30,7 @@ async def test_functional():
             'path': '/databases',
             }
         }}
-    zk = FakeClient()
+    zk = MyFakeClient()
     zk.start()
     zk.create("/databases")
     zk.create("/databases/clusterA_conn_10.0.0.2", json.dumps({"node": 1}).encode('utf-8'))
@@ -63,7 +69,7 @@ def deadman_plugin(request):
         app.master_lock_changed._is_coroutine = False # otherwise tests fail :(
         from ..zookeeper import ZooKeeperDeadmanPlugin
         plugin = ZooKeeperDeadmanPlugin('zgres#zookeeper', app)
-        zk = FakeClient(storage=storage)
+        zk = MyFakeClient(storage=storage)
         if storage is None:
             # all plugins created by this factory SHARE a storage
             storage = zk.storage

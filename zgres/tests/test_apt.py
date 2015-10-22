@@ -120,6 +120,7 @@ def test_database_identifier(running_plugin):
     assert int(new_ident) > 0
     assert ident != new_ident
 
+@needs_root
 def test_timeline(plugin, cluster):
     # new db allways start in timeline 1
     assert plugin.pg_get_timeline() == None
