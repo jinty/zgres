@@ -213,3 +213,13 @@ def test_pg_ident(plugin, cluster):
                           ''])
     assert data.endswith(appended)
     check_call(['pg_dropcluster'] + list(cluster))
+
+@needs_root
+def test_setup_replication(running_plugin):
+    plugin = running_plugin
+    plugin.pg_setup_replication()
+    plugin.pg_setup_replication(primary_conninfo=dict(host='example.org', port=5555))
+    plugin.app.config['apt']['restore_command'] = 'fail'
+    plugin.pg_setup_replication()
+    plugin.pg_stop_replication()
+    plugin.pg_setup_replication()

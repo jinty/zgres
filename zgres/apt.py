@@ -270,10 +270,7 @@ class AptPostgresqlPlugin:
 trigger_file = '{trigger_file}'
 recovery_target_timeline = 'latest'
 """
-        config = config.format(
-                trigger_file=trigger_file,
-                host=host,
-                port=port)
+        config = config.format(trigger_file=trigger_file)
         restore_command = self.app.config['apt'].get('restore_command', None)
         if primary_conninfo:
             parts = []
@@ -281,7 +278,7 @@ recovery_target_timeline = 'latest'
                 parts.append('{}={}'.format(k, v))
             config += "\nprimary_conninfo = '{}'".format(' '.join(parts))
         if restore_command:
-            config += "\nrestore_command = '{restore_command}'".format(restore_command)
+            config += "\nrestore_command = '{}'".format(restore_command)
         with open(os.path.join(self._data_dir(), 'recovery.conf'), 'w') as f:
             f.write(config)
         self._set_config_values('replica.')
