@@ -348,7 +348,7 @@ class ZooKeeperDeadmanPlugin:
             owner, stat = self._zk.get(self._lock_path(name))
         except kazoo.exceptions.NoNodeError:
             return False
-        if stat.owner_session_id == self._zk.session_id:
+        if stat.owner_session_id == self._zk.client_id[0]:
             return True
         return False
 
