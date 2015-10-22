@@ -99,20 +99,43 @@ class AptPostgresqlPlugin:
 
     def _set_config_values(self, prefix=None):
         changed = False
+        pg_hba = {}
+        pg_ident = {}
         for k, v in self.app.config['apt'].items():
             if prefix is not None:
                 if k.startswith(prefix):
                     k = k[len(prefix):]
                 else:
                     continue
-            if not k.startswith('postgresql.conf.'):
-                continue
-            k = k[16:]
-            v = v.strip()
+            if k.startswith('postgresql.conf.'):
+                k = k[16:]
+                v = v.strip()
+                changed = True
+                self._set_conf_value(k, v)
+            elif k.startswith('pg_hba.conf.'):
+                k = k[12:]
+                assert k not in pg_hba
+                pg_hba[k] = v
+            elif k.startswith('pg_ident.conf.'):
+                k = k[14:]
+                assert k not in pg_ident
+                pg_ident[k] = v
+        if pg_ident or pg_hba:
             changed = True
-            self._set_conf_value(k, v)
+        self._append_lines('pg_hba.conf', pg_hba)
+        self._append_lines('pg_ident.conf', pg_ident)
         return changed
 
+    def _append_lines(self, config_file, lines):
+        if not lines:
+            return
+        path = self._config_file(name=config_file)
+        with open(path, 'a') as f:
+            f.write('\n')
+            for key, lines in sorted(lines.items()):
+                f.write('# added by zgres ({})\n'.format(key))
+                f.write(lines)
+                f.write('\n')
     @subscribe
     def pg_get_database_identifier(self):
         if not os.path.exists(self._config_file()):

@@ -29,14 +29,15 @@ def plugin(cluster):
     app.config = dict(
             apt=dict(
                 postgresql_version=pg_version,
-                postgresql_cluster_name=cluster_name,
-                superuser_connect_as='root',
-                create_superuser='True'))
+                postgresql_cluster_name=cluster_name))
     from ..apt import AptPostgresqlPlugin
     return AptPostgresqlPlugin('zgres#apt', app)
 
 @pytest.fixture
 def running_plugin(request, plugin, cluster):
+    plugin.app.config['apt']['pg_hba.conf.allowroot'] = 'local all postgres peer map=allowroot'
+    plugin.app.config['apt']['pg_ident.conf.allowroot'] = 'allowroot root postgres'
+    plugin.app.config['apt']['superuser_connect_as'] = 'postgres'
     # shortcut to a running cluster
     plugin.pg_initdb()
     plugin.pg_start()
@@ -83,6 +84,8 @@ def test_double_initdb(plugin, cluster):
 
 @needs_root
 def test_init_start_stop_drop(plugin, cluster):
+    plugin.app.config['apt']['superuser_connect_as'] = 'root'
+    plugin.app.config['apt']['create_superuser'] = 'true'
     plugin.pg_initdb()
     plugin.pg_start()
     conn_info = plugin.pg_connect_info()
@@ -115,3 +118,40 @@ def test_database_idntifier(running_plugin):
 def test_database_identifier_with_no_cluster_setup(plugin):
     # NOTE: this test may fail if others do not cleanup properly
     assert plugin.pg_get_database_identifier() == None
+
+@needs_root
+def test_pg_hba(plugin, cluster):
+    plugin.app.config['apt']['pg_hba.conf.key1'] = 'host replication postgres otherhost trust'
+    plugin.app.config['apt']['pg_hba.conf.key2'] = 'host replication postgres otherhost2 trust\nhost replication postgres otherhost3 trust'
+    plugin.pg_initdb()
+    hba_file = plugin._config_file(name='pg_hba.conf')
+    with open(hba_file, 'r') as f:
+        data = f.read()
+    print(repr(data))
+    appended = '\n'.join(['',
+                          '# added by zgres (key1)',
+                          'host replication postgres otherhost trust',
+                          '# added by zgres (key2)',
+                          'host replication postgres otherhost2 trust',
+                          'host replication postgres otherhost3 trust',
+                          ''])
+    assert data.endswith(appended)
+    check_call(['pg_dropcluster'] + list(cluster))
+
+@needs_root
+def test_pg_ident(plugin, cluster):
+    plugin.app.config['apt']['pg_ident.conf.key1'] = 'pg root postgres'
+    plugin.app.config['apt']['pg_ident.conf.key2'] = 'pg admin postgres\npg staff postgres'
+    plugin.pg_initdb()
+    ident_file = plugin._config_file(name='pg_ident.conf')
+    with open(ident_file, 'r') as f:
+        data = f.read()
+    appended = '\n'.join(['',
+                          '# added by zgres (key1)',
+                          'pg root postgres',
+                          '# added by zgres (key2)',
+                          'pg admin postgres',
+                          'pg staff postgres',
+                          ''])
+    assert data.endswith(appended)
+    check_call(['pg_dropcluster'] + list(cluster))
