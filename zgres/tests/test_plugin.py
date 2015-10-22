@@ -109,7 +109,7 @@ def test_get_event_handler():
     log[:] = []
     # with non-returning events, the events are just called
     result = handler.other_event(1, 5)
-    assert result == [6]
+    assert result == [('plugin2', 6)]
     assert log == [
         ('plugin2', 'other_event', 1, 5),
         ]
