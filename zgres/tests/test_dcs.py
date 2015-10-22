@@ -171,23 +171,23 @@ async def test_notifications_of_state_chagnges(plugin):
     pluginA, pluginB, pluginC = plugin('A'), plugin('B'), plugin('C')
     pluginC._group_name = 'another'
     # pluginB watches state, plugin A doesn't
-    pluginA.dcs_watch(state=False)
-    pluginB.dcs_watch(state=True)
-    pluginC.dcs_watch(state=True)
+    pluginA.dcs_watch()
+    callbackB = mock.Mock()
+    pluginB.dcs_watch(state=callbackB)
+    callbackC = mock.Mock()
+    pluginC.dcs_watch(state=callbackC)
     # set state from both plugins
     pluginA.dcs_set_state(dict(name='A'))
     pluginB.dcs_set_state(dict(name='B'))
     pluginC.dcs_set_state(dict(name='C'))
     await asyncio.sleep(0.005)
-    # pluginA does NOT call it's app when the state changes
-    assert pluginA.app.state.mock_calls == []
     # pluginB gets events, but ONLY from plugins in its group
     # i.e. c is ignored
     # NOTE: we test only the LAST call as state for A and B may come out-of-order
     #       but the final, rest state, should be correct
-    assert pluginB.app.state.mock_calls[-1] == mock.call({'A': {'name': 'A'}, 'B': {'name': 'B'}})
+    assert callbackB.mock_calls[-1] == mock.call({'A': {'name': 'A'}, 'B': {'name': 'B'}})
     # C got it's own event
-    assert pluginC.app.state.mock_calls == [
+    assert callbackC.mock_calls == [
             mock.call({'C': {'name': 'C'}}),
             ]
 
@@ -196,23 +196,23 @@ async def test_notifications_of_conn_chagnges(plugin):
     pluginA, pluginB, pluginC = plugin('A'), plugin('B'), plugin('C')
     pluginC._group_name = 'another'
     # pluginB watches conn, plugin A doesn't
-    pluginA.dcs_watch(conn_info=False)
-    pluginB.dcs_watch(conn_info=True)
-    pluginC.dcs_watch(conn_info=True)
+    pluginA.dcs_watch()
+    callbackB = mock.Mock()
+    pluginB.dcs_watch(conn_info=callbackB)
+    callbackC = mock.Mock()
+    pluginC.dcs_watch(conn_info=callbackC)
     # set conn from both plugins
     pluginA.dcs_set_conn_info(dict(name='A'))
     pluginB.dcs_set_conn_info(dict(name='B'))
     pluginC.dcs_set_conn_info(dict(name='C'))
     await asyncio.sleep(0.005) #sigh, the DCS may use threading, give that a chance
-    # pluginA does NOT call it's app when the conn changes
-    assert pluginA.app.conn_info.mock_calls == []
     # pluginB gets events, but ONLY from plugins in its group
     # i.e. c is ignored
     # NOTE: we test only the LAST call as conn for A and B may come out-of-order
     #       but the final, rest conn, should be correct
-    assert pluginB.app.conn_info.mock_calls[-1] == mock.call({'A': {'name': 'A'}, 'B': {'name': 'B'}})
+    assert callbackB.mock_calls[-1] == mock.call({'A': {'name': 'A'}, 'B': {'name': 'B'}})
     # C got it's own event
-    assert pluginC.app.conn_info.mock_calls == [
+    assert callbackC.mock_calls == [
             mock.call({'C': {'name': 'C'}}),
             ]
 

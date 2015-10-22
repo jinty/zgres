@@ -305,21 +305,16 @@ class ZooKeeperDeadmanPlugin:
             data = b'0'
         return int(data.decode('ascii'))
 
-    def _notify_state(self, state, key, from_val, to_val):
-        self.app.state(_get_clusters(state).get(self._group_name, {}))
-
-    def _notify_conn(self, state, key, from_val, to_val):
-        self.app.conn_info(_get_clusters(state).get(self._group_name, {}))
-
-    def _dict_watcher(self, what):
-        hook = getattr(self, '_notify_' + what)
+    def _dict_watcher(self, what, callback):
+        def hook(state, key, from_val, to_val):
+            callback(_get_clusters(state).get(self._group_name, {}))
         path = self._path(what, name=None)
         prefix = self._group_name
         try:
             watch = DictWatch(self._zk, path, hook, prefix=prefix)
         except kazoo.exceptions.NoNodeError:
             self._zk.create(path, makepath=True)
-            return self._dict_watcher(what)
+            return self._dict_watcher(what, callback)
         return watch
 
     @subscribe
@@ -327,9 +322,9 @@ class ZooKeeperDeadmanPlugin:
         path = self._lock_path('master')
         self._monitors['master_lock_watch'] = self._zk.DataWatch(path, self._master_lock_changes)
         if state:
-            self._state_watcher = self._dict_watcher('state')
+            self._state_watcher = self._dict_watcher('state', state)
         if conn_info:
-            self._state_watcher = self._dict_watcher('conn')
+            self._state_watcher = self._dict_watcher('conn', conn_info)
 
     def _master_lock_changes(self, data, stat, event):
         if data is not None:

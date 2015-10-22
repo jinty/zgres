@@ -45,8 +45,8 @@ def setup_plugins(app, **kw):
             'dcs_get_timeline': 1,
             'get_conn_info': [('database', dict(host='127.0.0.1'))],
             'master_lock_changed': NO_SUBSCRIBER,
-            'conn_info': NO_SUBSCRIBER,
-            'state': NO_SUBSCRIBER,
+            'notify_conn_info': NO_SUBSCRIBER,
+            'notify_state': NO_SUBSCRIBER,
             'get_my_id': get_my_id,
             'dcs_get_database_identifier': '12345',
             'pg_get_database_identifier': '12345',
@@ -190,7 +190,7 @@ async def test_master_start(app):
             call.pg_start(),
             # start monitoring
             call.start_monitoring(),
-            call.dcs_watch(conn_info=False, state=False),
+            call.dcs_watch(conn_info=None, state=None),
             call.get_conn_info(),
             # set our first state
             call.dcs_set_state({
@@ -266,7 +266,7 @@ def test_replica_start(app):
             call.pg_start(),
             # start monitoring
             call.start_monitoring(),
-            call.dcs_watch(conn_info=False, state=False),
+            call.dcs_watch(conn_info=None, state=None),
             # setup our connection info
             call.get_conn_info(),
             # set our first state
@@ -294,27 +294,21 @@ def test_replica_start(app):
 
 def test_plugin_subscribe_to_conn_info(app):
     plugins = setup_plugins(app,
-            conn_info=[('pluginA', None)],
+            notify_conn_info=[('pluginA', None)],
             )
     app.initialize()
     assert plugins.dcs_watch.mock_calls ==  [
-            call.dcs_watch(conn_info=True, state=False),
+            call.dcs_watch(conn_info=plugins.notify_conn_info, state=None)
             ]
-    assert plugins.conn_info.mock_calls == []
-    plugins.conn_info({1: 2})
-    assert plugins.conn_info.mock_calls == [call({1: 2})]
 
 def test_plugin_subscribe_to_state(app):
     plugins = setup_plugins(app,
-            state=[('pluginA', None)],
+            notify_state=[('pluginA', None)],
             )
     app.initialize()
     assert plugins.dcs_watch.mock_calls ==  [
-            call.dcs_watch(state=True, conn_info=False),
+            call.dcs_watch(state=plugins.notify_state, conn_info=None)
             ]
-    assert plugins.state.mock_calls == []
-    plugins.state({1: 2})
-    assert plugins.state.mock_calls == [call({1: 2})]
 
 def test_plugin_tells_app_to_follow_new_leader(app):
     plugins = setup_plugins(app)

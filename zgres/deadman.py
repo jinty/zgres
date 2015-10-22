@@ -22,10 +22,10 @@ _PLUGIN_API = [
             required=False,
             type='single'),
 
-        dict(name='state', # subscribe to changes in cluster state
+        dict(name='notify_state', # subscribe to changes in cluster state
             required=False,
             type='multiple'),
-        dict(name='conn_info', # subscribe to changes in cluster connection info
+        dict(name='notify_conn_info', # subscribe to changes in cluster connection info
             required=False,
             type='multiple'),
         dict(name='master_lock_changed', # subscribe to changes in cluster master
@@ -178,12 +178,6 @@ class App:
                 _PLUGIN_API,
                 self)
 
-    def conn_info(self, databases):
-        self._plugins.conn_info(databases)
-
-    def state(self, databases):
-        self._plugins.state(databases)
-
     def follow(self, primary_conninfo): 
         # Change who we are replicating from
         self._plugins.pg_setup_replication(primary_conninfo=primary_conninfo)
@@ -267,8 +261,8 @@ class App:
         self._plugins.start_monitoring()
         self.logger.info('Starting to watch the DCS for events')
         self._plugins.dcs_watch(
-                state=self._plugins.state and True or False,
-                conn_info=self._plugins.conn_info and True or False)
+                state=self._plugins.notify_state,
+                conn_info=self._plugins.notify_conn_info)
         self._get_conn_info_from_plugins()
         self.healthy('zgres.initialize')
         if self.health_problems:
