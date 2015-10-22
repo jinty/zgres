@@ -48,7 +48,7 @@ def _handlers_executor(handlers):
     if not handlers:
         return None
     def call(self, *args, **kw):
-        return [h(*args, **kw) for _, _, h in handlers]
+        return [(name, h(*args, **kw)) for name, _, h in handlers]
     return call
 
 def _handlers_executor_single(handlers):

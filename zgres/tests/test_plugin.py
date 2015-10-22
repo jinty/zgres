@@ -97,9 +97,9 @@ def test_get_event_handler():
     # Call the real event
     result = handler.event('hey')
     assert result == [
-        None,
-        'hey-ho',
-        None,
+        ('plugin1', None),
+        ('plugin2', 'hey-ho'),
+        ('plugin3', None),
         ]
     assert log == [
         ('plugin1', 'event', 'hey'),
