@@ -404,7 +404,7 @@ class ZooKeeperDeadmanPlugin:
             pass
     
     @subscribe
-    def dcs_delete_conn(self):
+    def dcs_delete_conn_info(self):
         return self._delete_info('conn')
 
     @subscribe

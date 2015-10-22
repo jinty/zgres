@@ -1,4 +1,5 @@
 import os
+import time
 from unittest import mock
 import asyncio
 from subprocess import check_output, check_call
@@ -22,22 +23,29 @@ needs_root = pytest.mark.skipif(not have_root(), reason='requires root and ZGRES
 def cluster():
     return ('9.4', 'zgres_test')
 
+def print_log(cluster):
+    # for debugging
+    with open('/var/log/postgresql/postgresql-{}-{}.log'.format(*cluster), 'r') as f:
+        print('PostgreSQL log for test:')
+        print(f.read())
+
 @pytest.fixture
 def plugin(cluster):
     pg_version, cluster_name = cluster
     app = mock.Mock()
     app.config = dict(
-            apt=dict(
-                postgresql_version=pg_version,
-                postgresql_cluster_name=cluster_name))
+            apt={
+                'postgresql_version': pg_version,
+                'pg_hba.conf.allowroot': 'local all postgres peer map=allowroot',
+                'pg_hba.conf': 'prepend',
+                'pg_ident.conf.allowroot': 'allowroot root postgres\nallowroot postgres postgres',
+                'superuser_connect_as': 'postgres',
+                'postgresql_cluster_name': cluster_name})
     from ..apt import AptPostgresqlPlugin
     return AptPostgresqlPlugin('zgres#apt', app)
 
 @pytest.fixture
 def running_plugin(request, plugin, cluster):
-    plugin.app.config['apt']['pg_hba.conf.allowroot'] = 'local all postgres peer map=allowroot'
-    plugin.app.config['apt']['pg_ident.conf.allowroot'] = 'allowroot root postgres'
-    plugin.app.config['apt']['superuser_connect_as'] = 'postgres'
     # shortcut to a running cluster
     plugin.pg_initdb()
     plugin.pg_start()
@@ -93,7 +101,9 @@ def test_init_start_stop_drop(plugin, cluster):
     plugin.app.config['apt']['superuser_connect_as'] = 'root'
     plugin.app.config['apt']['create_superuser'] = 'true'
     plugin.pg_initdb()
+    assert not plugin._is_active()
     plugin.pg_start()
+    assert plugin._is_active()
     conn_info = plugin.pg_connect_info()
     with psycopg2.connect(**conn_info) as conn:
         with conn.cursor() as cur:
@@ -126,8 +136,9 @@ def test_timeline(plugin, cluster):
     assert plugin.pg_get_timeline() == None
     plugin.pg_initdb()
     assert plugin.pg_get_timeline() == 1
-    plugin.pg_stop()
+    plugin.pg_start()
     assert plugin.pg_get_timeline() == 1
+    plugin.pg_stop()
     check_call(['pg_dropcluster'] + list(cluster))
 
 @needs_root
@@ -137,6 +148,8 @@ def test_database_identifier_with_no_cluster_setup(plugin):
 
 @needs_root
 def test_pg_hba(plugin, cluster):
+    del plugin.app.config['apt']['pg_hba.conf.allowroot']
+    del plugin.app.config['apt']['pg_hba.conf']
     plugin.app.config['apt']['pg_hba.conf.key1'] = 'host replication postgres otherhost trust'
     plugin.app.config['apt']['pg_hba.conf.key2'] = 'host replication postgres otherhost2 trust\nhost replication postgres otherhost3 trust'
     plugin.pg_initdb()
@@ -156,6 +169,7 @@ def test_pg_hba(plugin, cluster):
 
 @needs_root
 def test_pg_hba_replace(plugin, cluster):
+    del plugin.app.config['apt']['pg_hba.conf.allowroot']
     plugin.app.config['apt']['pg_hba.conf'] = 'replace'
     plugin.app.config['apt']['pg_hba.conf.key1'] = 'host replication postgres otherhost trust'
     plugin.app.config['apt']['pg_hba.conf.key2'] = 'host replication postgres otherhost2 trust\nhost replication postgres otherhost3 trust'
@@ -177,6 +191,7 @@ def test_pg_hba_replace(plugin, cluster):
 
 @needs_root
 def test_pg_hba_prepend(plugin, cluster):
+    del plugin.app.config['apt']['pg_hba.conf.allowroot']
     plugin.app.config['apt']['pg_hba.conf'] = 'prepend'
     plugin.app.config['apt']['pg_hba.conf.key1'] = 'host replication postgres otherhost trust'
     plugin.app.config['apt']['pg_hba.conf.key2'] = 'host replication postgres otherhost2 trust\nhost replication postgres otherhost3 trust'
@@ -198,6 +213,7 @@ def test_pg_hba_prepend(plugin, cluster):
 
 @needs_root
 def test_pg_ident(plugin, cluster):
+    del plugin.app.config['apt']['pg_ident.conf.allowroot']
     plugin.app.config['apt']['pg_ident.conf.key1'] = 'pg root postgres'
     plugin.app.config['apt']['pg_ident.conf.key2'] = 'pg admin postgres\npg staff postgres'
     plugin.pg_initdb()
@@ -216,11 +232,27 @@ def test_pg_ident(plugin, cluster):
     check_call(['pg_dropcluster'] + list(cluster))
 
 @needs_root
-def test_setup_replication(running_plugin):
-    plugin = running_plugin
+def test_setup_replication(plugin, cluster):
+    plugin.pg_initdb()
     plugin.pg_setup_replication()
-    plugin.pg_setup_replication(primary_conninfo=dict(host='example.org', port=5555))
+    assert plugin.pg_am_i_replica()
+    plugin.pg_start()
+    plugin.pg_setup_replication(primary_conninfo=dict(host='127.0.0.1', port=5555))
+    plugin.pg_reload()
     plugin.app.config['apt']['restore_command'] = 'fail'
     plugin.pg_setup_replication()
+    plugin.pg_reload()
+    assert plugin.pg_am_i_replica()
     plugin.pg_stop_replication()
-    plugin.pg_setup_replication()
+    for i in range(15):
+        time.sleep(1)
+        if not plugin.pg_am_i_replica():
+            break
+    else:
+        print_log(cluster)
+        assert False, 'cluster failed to come out of replication'
+    assert not plugin.pg_am_i_replica()
+    assert plugin.pg_get_timeline() == 2
+    plugin.pg_stop()
+    assert plugin.pg_get_timeline() == 2
+    check_call(['pg_dropcluster'] + list(cluster))

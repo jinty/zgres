@@ -1,6 +1,8 @@
 import asyncio
 from asyncio import sleep
 
+import pytest
+
 class FakeSleeper:
 
     def __init__(self, max_loops=20):
@@ -34,3 +36,14 @@ class FakeSleeper:
         await self._next.wait()
         self._next.clear()
         self._check_finished()
+
+@pytest.fixture
+def deadman_app():
+    def factory(config):
+        from ..deadman import App, _PLUGIN_API
+        with patch('zgres.plugin.get_plugins') as get_plugins:
+            get_plugins.return_value = Mock(spec_set=[s['name'] for s in _PLUGIN_API])
+            app = App(config)
+        plugins = app._plugins
+        return app
+    return factory

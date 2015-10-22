@@ -156,8 +156,8 @@ class AptPostgresqlPlugin:
         return _pg_controldata_value(self._version, self._data_dir(), 'Database system identifier')
 
     def _conn(self):
-        info = self.pg_conn_info()
-        return psycopg2.connect(**kw)
+        info = self.pg_connect_info()
+        return psycopg2.connect(**info)
 
     @subscribe
     def pg_get_timeline(self):

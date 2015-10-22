@@ -4,6 +4,7 @@ import asyncio
 import pytest
 
 from . import FakeSleeper
+from . import deadman_app
 
 def mock_state(replica=False, **kw):
     if replica:
@@ -21,14 +22,8 @@ def mock_state(replica=False, **kw):
     return defaults
 
 @pytest.fixture
-def app():
-    from ..deadman import App, _PLUGIN_API
-    with patch('zgres.plugin.get_plugins') as get_plugins:
-        get_plugins.return_value = Mock(spec_set=[s['name'] for s in _PLUGIN_API])
-        app = App(dict(deadman=
-            dict(tick_time=1)))
-    plugins = app._plugins
-    return app
+def app(deadman_app):
+    return deadman_app(dict(deadman=dict(tick_time=1)))
 
 NO_SUBSCRIBER = object()
 
