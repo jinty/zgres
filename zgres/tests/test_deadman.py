@@ -453,3 +453,40 @@ async def test_replica_tries_to_take_over(app):
         assert app._plugins.mock_calls ==  [
                 call.dcs_get_all_state(),
                 call.dcs_lock('master')]
+
+def test_replica_unhealthy(app):
+    plugins = setup_plugins(app,
+            pg_am_i_replica=True)
+    app.initialize()
+    plugins.reset_mock()
+    app.unhealthy('boom', 'It went Boom')
+    assert plugins.mock_calls ==  [
+            call.dcs_set_state({'host': '127.0.0.1', 'health_problems': {'boom': {'reason': 'It went Boom', 'can_be_replica': False}}}),
+            call.pg_am_i_replica(),
+            call.dcs_delete_conn_info(),
+            ]
+
+def test_replica_slightly_sick(app):
+    plugins = setup_plugins(app,
+            pg_am_i_replica=True)
+    app.initialize()
+    plugins.reset_mock()
+    app.unhealthy('boom', 'It went Boom', can_be_replica=True)
+    assert plugins.mock_calls ==  [
+            call.dcs_set_state({'host': '127.0.0.1', 'health_problems': {'boom': {'reason': 'It went Boom', 'can_be_replica': True}}}),
+            call.pg_am_i_replica(),
+            ]
+
+@pytest.mark.asyncio
+async def test_master_unhealthy(app):
+    plugins = setup_plugins(app,
+            pg_am_i_replica=False)
+    app.initialize()
+    plugins.reset_mock()
+    app.unhealthy('boom', 'It went Boom', can_be_replica=True)
+    assert plugins.mock_calls ==  [
+            call.dcs_set_state({'host': '127.0.0.1', 'health_problems': {'boom': {'reason': 'It went Boom', 'can_be_replica': True}}}),
+            call.pg_am_i_replica(),
+            call.dcs_delete_conn_info(),
+            ]
+

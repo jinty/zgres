@@ -67,7 +67,7 @@ def get_event_handler(setup_plugins, events, logger=logging):
     event_names = set([])
     for event_name in events:
         if isinstance(event_name, dict):
-            spec = event_name
+            spec = event_name.copy()
             event_name = spec.pop('name')
         else:
             spec = dict(type='multiple',

@@ -78,7 +78,7 @@ def test_dont_unlock_others(pluginAB):
     pluginB.dcs_unlock('mylock')
     assert pluginB.dcs_lock('mylock') == False
 
-def test_set_delete_conn(pluginAB):
+def test_set_delete_conn_info(pluginAB):
     pluginA, pluginB = pluginAB
     pluginA.dcs_set_conn_info(dict(answer=42))
     assert sorted(pluginA.dcs_get_all_conn()) == [('A', dict(answer=42))]
@@ -86,14 +86,14 @@ def test_set_delete_conn(pluginAB):
     assert sorted(pluginA.dcs_get_all_conn()) == [('A', dict(answer=42)), ('B', dict(answer='X'))]
     assert sorted(pluginB.dcs_get_all_conn()) == [('A', dict(answer=42)), ('B', dict(answer='X'))]
     assert sorted(pluginA.dcs_get_all_state()) == []
-    pluginA.dcs_delete_conn()
+    pluginA.dcs_delete_conn_info()
     assert sorted(pluginB.dcs_get_all_conn()) == [('B', dict(answer='X'))]
 
 def test_set_delete_info_is_idempotent(plugin):
     plugin = plugin()
     plugin.dcs_set_conn_info(dict(server=42))
-    plugin.dcs_delete_conn()
-    plugin.dcs_delete_conn()
+    plugin.dcs_delete_conn_info()
+    plugin.dcs_delete_conn_info()
 
 def test_info_is_ephemeral(plugin):
     # 2 servers with the same id should NOT happen in real life...

@@ -69,7 +69,7 @@ _PLUGIN_API = [
             required=True,
             type='single'),
 
-        dict(name='dcs_delete_conn',
+        dict(name='dcs_delete_conn_info',
             required=True,
             type='multiple'),
         dict(name='dcs_set_conn_info',
@@ -386,9 +386,9 @@ class App:
         logging.warn('I am unhelthy: ({}) {}'.format(key, reason))
         if self._plugins.pg_am_i_replica():
             if not can_be_replica:
-                self.dcs_remove_conn_info()
+                self._plugins.dcs_delete_conn_info()
         else:
-            self.dcs_remove_conn_info()
+            self._plugins.dcs_delete_conn_info()
             self._loop.call_soon(self._loop.create_task, self._handle_unhealthy_master())
 
     async def _handle_unhealthy_master(self):
