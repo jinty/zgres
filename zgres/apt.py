@@ -29,7 +29,7 @@ class AptPostgresqlPlugin:
 
     def __init__(self, name, app):
         self.app = app
-        self._health_check_key = (name, 'systemd')
+        self._health_check_key = '{}-systemd'.format(name)
         self.logger = logging.getLogger(name)
 
     @property

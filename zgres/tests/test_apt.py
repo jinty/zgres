@@ -74,11 +74,11 @@ async def test_monitoring(plugin, cluster):
         plugin.start_monitoring()
         await sleeper.wait()
         assert plugin.app.mock_calls == [
-                mock.call.unhealthy(('zgres#apt', 'systemd'), 'Waiting for first systemd check'),
-                mock.call.healthy(('zgres#apt', 'systemd')),
-                mock.call.healthy(('zgres#apt', 'systemd')),
-                mock.call.unhealthy(('zgres#apt', 'systemd'), 'inactive according to systemd'),
-                mock.call.healthy(('zgres#apt', 'systemd')),
+                mock.call.unhealthy('zgres#apt-systemd', 'Waiting for first systemd check'),
+                mock.call.healthy('zgres#apt-systemd'),
+                mock.call.healthy('zgres#apt-systemd'),
+                mock.call.unhealthy('zgres#apt-systemd', 'inactive according to systemd'),
+                mock.call.healthy('zgres#apt-systemd'),
                 ]
         subprocess_call.assert_has_calls(
                 [mock.call(['systemctl', 'is-active', 'postgresql@{}-{}.service'.format(*cluster)]),
