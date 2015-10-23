@@ -5,10 +5,14 @@ install:
     - travis_retry pip install tox
 script:
     - tox
-    - sudo -E env "PATH=$PATH" tox -e destroy_machine_with_sudo
 notifications:
     email: false
-addons:
-  postgresql: "9.4"
-sudo: true
-dist: trusty
+sudo: false
+
+# TODO: re-enalbe full test runs with travis. Can only happen when travis uses a later distribution tham trusty as we need systemd
+#addons:
+#  postgresql: "9.4"
+#script:
+#    - sudo -E env "PATH=$PATH" tox -e destroy_machine_with_sudo
+#sudo: true
+#dist: trusty
