@@ -10,13 +10,13 @@ def mock_state(replica=False, **kw):
     if replica:
         defaults = dict(
                 health_problems={},
-                pg_is_in_recovery=True,
+                replica=replica,
                 pg_last_xlog_replay_location='68A/16E1DA8',
                 pg_last_xlog_receive_location='68A/16E1DA8')
     else:
         defaults = dict(
                 health_problems={},
-                pg_is_in_recovery=False,
+                replica=replica,
                 pg_current_xlog_location='68A/16E1DA8')
     defaults.update(kw)
     return defaults
@@ -27,15 +27,21 @@ def app(deadman_app):
 
 NO_SUBSCRIBER = object()
 
+def state_getter(app, *extra_states):
+    def dcs_get_all_state():
+        # generate some mock state
+        for id, state in [(app.my_id, app._state)] + list(extra_states):
+            yield id, state
+    return dcs_get_all_state
+
+
 def setup_plugins(app, **kw):
     plugins = app._plugins
     from ..deadman import _PLUGIN_API
     get_my_id = kw.get('get_my_id', '42')
     pg_am_i_replica = kw.get('pg_am_i_replica', True)
-    mystate = mock_state(replica=pg_am_i_replica)
     defaults = {
             'pg_am_i_replica': pg_am_i_replica,
-            'dcs_get_all_state': [(get_my_id, mystate)],
             'pg_get_timeline': 1,
             'dcs_get_timeline': 1,
             'get_conn_info': [('database', dict(host='127.0.0.1'))],
@@ -49,6 +55,8 @@ def setup_plugins(app, **kw):
     if not pg_am_i_replica:
         defaults['dcs_lock'] = True
     defaults.update(kw)
+    if 'dcs_get_all_state' not in defaults:
+        plugins.dcs_get_all_state.side_effect = state_getter(app)
     for k, v in defaults.items():
         for i in _PLUGIN_API:
             if k == i['name']:
@@ -190,6 +198,7 @@ async def test_master_start(app):
             # set our first state
             call.dcs_set_state({
                 'host': '127.0.0.1',
+                'replica': False,
                 'health_problems': {'test_monitor':
                     {'can_be_replica': False, 'reason': 'Waiting for first check'}}})
             ]
@@ -202,6 +211,7 @@ async def test_master_start(app):
     assert plugins.mock_calls ==  [
             call.dcs_set_state({
                 'host': '127.0.0.1',
+                'replica': False,
                 'health_problems': {}}),
             call.pg_am_i_replica(),
             call.dcs_lock('master'),
@@ -268,6 +278,7 @@ def test_replica_start(app):
             call.dcs_set_state({
                 'a': 'b',
                 'host': '127.0.0.1',
+                'replica': True,
                 'health_problems': {'test_monitor':
                     {'can_be_replica': False, 'reason': 'Waiting for first check'}},
                 })
@@ -281,6 +292,7 @@ def test_replica_start(app):
     assert plugins.mock_calls ==  [
             call.dcs_set_state({'health_problems': {},
                 'a': 'b',
+                'replica': True,
                 'host': '127.0.0.1',
                 }),
             call.pg_am_i_replica(),
@@ -427,6 +439,10 @@ async def test_replica_reaction_to_master_lock_change(app):
             call.pg_stop_replication(),
             call.pg_get_timeline(),
             call.dcs_set_timeline(42),
+            call.dcs_set_state({
+                'health_problems': {},
+                'replica': False,
+                'host': '127.0.0.1'}),
             ]
     assert app._master_lock_owner == app.my_id
 
@@ -435,6 +451,9 @@ async def test_replica_tries_to_take_over(app):
     plugins = setup_plugins(app,
             pg_am_i_replica=True)
     assert app.initialize() == None
+    app.update_state(
+            pg_last_xlog_replay_location='68A/16E1DA8',
+            pg_last_xlog_receive_location='68A/16E1DA8')
     plugins.reset_mock()
     # if there is no lock owner, we start looping trying to become master
     app.master_lock_changed(None)
@@ -461,7 +480,10 @@ def test_replica_unhealthy(app):
     plugins.reset_mock()
     app.unhealthy('boom', 'It went Boom')
     assert plugins.mock_calls ==  [
-            call.dcs_set_state({'host': '127.0.0.1', 'health_problems': {'boom': {'reason': 'It went Boom', 'can_be_replica': False}}}),
+            call.dcs_set_state({
+                'host': '127.0.0.1',
+                'replica': True,
+                'health_problems': {'boom': {'reason': 'It went Boom', 'can_be_replica': False}}}),
             call.pg_am_i_replica(),
             call.dcs_delete_conn_info(),
             ]
@@ -473,7 +495,10 @@ def test_replica_slightly_sick(app):
     plugins.reset_mock()
     app.unhealthy('boom', 'It went Boom', can_be_replica=True)
     assert plugins.mock_calls ==  [
-            call.dcs_set_state({'host': '127.0.0.1', 'health_problems': {'boom': {'reason': 'It went Boom', 'can_be_replica': True}}}),
+            call.dcs_set_state({
+                'host': '127.0.0.1',
+                'replica': True,
+                'health_problems': {'boom': {'reason': 'It went Boom', 'can_be_replica': True}}}),
             call.pg_am_i_replica(),
             ]
 
@@ -485,8 +510,36 @@ async def test_master_unhealthy(app):
     plugins.reset_mock()
     app.unhealthy('boom', 'It went Boom', can_be_replica=True)
     assert plugins.mock_calls ==  [
-            call.dcs_set_state({'host': '127.0.0.1', 'health_problems': {'boom': {'reason': 'It went Boom', 'can_be_replica': True}}}),
+            call.dcs_set_state({
+                'host': '127.0.0.1',
+                'replica': False,
+                'health_problems': {'boom': {'reason': 'It went Boom', 'can_be_replica': True}}}),
             call.pg_am_i_replica(),
             call.dcs_delete_conn_info(),
             ]
+    plugins.reset_mock()
+    # now we should have _handle_unhealthy_master running
+    with patch('asyncio.sleep') as sleep, patch('sys.exit') as exit, patch('time.sleep') as blocking_sleep:
+        sleeper = FakeSleeper()
+        sleep.side_effect = sleeper
+        exit.side_effect = lambda x: sleeper.finish()
+        # there is no replica, so we just sleep and ping the
+        # DCS to find a willing replica
+        await sleeper.next()
+        assert plugins.mock_calls == [call.dcs_get_all_state()]
+        await sleeper.next()
+        assert plugins.mock_calls == [call.dcs_get_all_state(), call.dcs_get_all_state()]
+        # we add a willing replica
+        plugins.reset_mock()
+        plugins.dcs_get_all_state.side_effect = state_getter(
+                app,
+                ('not_me', mock_state(replica=True)))
+        await sleeper.next()
+        assert plugins.mock_calls == [
+                call.dcs_get_all_state(),
+                call.pg_am_i_replica(),
+                call.pg_stop(),
+                call.dcs_disconnect()
+                ]
 
+    

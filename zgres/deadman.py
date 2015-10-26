@@ -144,15 +144,11 @@ _PLUGIN_API = [
         ]
 
 def wal_sort_key(state):
-    if state['pg_is_in_recovery']:
-        master_before_replica = 1
-    else:
-        master_before_replica = 0
     wal_replay_position = state.get('pg_last_xlog_replay_location', '0/0')
     wal_replay_position = -utils.pg_lsn_to_int(wal_replay_position)
     wal_recieve_position = state.get('pg_last_xlog_receive_location', '0/0')
     wal_recieve_position = -utils.pg_lsn_to_int(wal_recieve_position)
-    return (master_before_replica, -wal_recieve_position, -wal_replay_position)
+    return (-wal_recieve_position, -wal_replay_position)
 
 class App:
 
@@ -243,6 +239,7 @@ class App:
             return self.replica_bootstrap()
         self.database_identifier = my_database_id
         am_replica = self._plugins.pg_am_i_replica()
+        self.update_state(replica=am_replica)
         if not am_replica:
             if not self._plugins.dcs_lock('master'):
                 self._plugins.pg_stop()
@@ -319,6 +316,7 @@ class App:
             if self._plugins.pg_am_i_replica():
                 self._plugins.pg_stop_replication()
                 self._update_timeline()
+                self.update_state(replica=False)
         else:
             if not self._plugins.pg_am_i_replica():
                 # if I am master, but I am not replicating, shut down
@@ -329,8 +327,23 @@ class App:
         if self._plugins.master_lock_changed is not None:
             self._plugins.master_lock_changed(owner)
 
-    def am_i_best_replica(self):
-        nodes = [(wal_sort_key(state), id, state) for id, state in self._plugins.dcs_get_all_state()]
+    def _willing_replicas(self):
+        for id, state in self._plugins.dcs_get_all_state():
+            if state.get('nofailover', False):
+                continue
+            if state.get('health_problems', True):
+                # if missing, something is wrong, should be an empty dict
+                continue
+            if not state.get('replica', False):
+                continue
+            if 'pg_last_xlog_receive_location' not in state \
+                    or 'pg_last_xlog_replay_location' not in state:
+                # we also need to know the replay location
+                continue
+            yield id, state
+
+    def _am_i_best_replica(self):
+        nodes = [(wal_sort_key(state), id, state) for id, state in self._willing_replicas()]
         nodes.sort()
         best_key = None
         the_best = []
@@ -342,12 +355,6 @@ class App:
                 continue
             the_best.append(id)
             if id != self.my_id:
-                continue
-            if state['health_problems']:
-                self.logger.info('Disqualifying myself because of health problems')
-                continue
-            if not state['pg_is_in_recovery']:
-                self.logger.info('I am alreay a master.')
                 continue
             # perform final check to see if I am willing
             if state['pg_last_xlog_replay_location'] != state['pg_last_xlog_receive_location']:
@@ -372,7 +379,7 @@ class App:
             if self._master_lock_owner is not None:
                 self.logger.info('There is a new master: {}, stop trying to take over'.format(self._master_lock_owner))
                 break
-            if self.am_i_best_replica():
+            if self._am_i_best_replica():
                 # try get the master lock, if this suceeds, master_lock_change will be called again
                 # and will bring us out of replication
                 self.logger.info('I am one of the best, trying to get the master lock')
@@ -402,8 +409,10 @@ class App:
             return # already trying
         async with self._giveup_lock:
             while self.health_problems:
-                if self._plugins.is_there_willing_replica():
-                    # fallover
+                for i in self._willing_replicas():
+                    # there is at least one willing replica
+                    # give it a chance to take over by giving up
+                    # the lock
                     self.restart(120)
                 await self._async_sleep(30)
 
