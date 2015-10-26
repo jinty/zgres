@@ -10,14 +10,9 @@ def pg_lsn_to_int(pos):
     return 0xFF000000 * int(logfile, 16) + int(offset, 16)
 
 def exception_handler(loop, context):
-    sleep_time = 10
-    try:
-        loop.default_exception_handler(context)
-        logging.error('Unexpected exception, exiting...')
-        # TODO: can we do some kind of backoff?
-    finally:
-        time.sleep(sleep_time)
-        sys.exit(1)
+    loop.default_exception_handler(context)
+    logging.error('Unexpected exception, exiting...')
+    sys.exit(1)
 
 def run_asyncio(*callback_and_args):
     loop = asyncio.get_event_loop()
