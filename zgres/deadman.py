@@ -307,18 +307,24 @@ class App:
         self._plugins.dcs_set_timeline(my_timeline)
 
     def master_lock_changed(self, owner):
-        """Respond to a change in the maser lock"""
+        """Respond to a change in the master lock.
+        
+        At least one plugin must call this callback when the master lock
+        changes.  This method should also be called at least once on startup
+        with the current master.
+        """
         self._master_lock_owner = owner
         if owner == self.my_id:
-            # I should be the master
+            # I have the master lock, if I am replicating, stop.
             if self._plugins.pg_am_i_replica():
                 self._plugins.pg_stop_replication()
                 self._update_timeline()
         else:
             if not self._plugins.pg_am_i_replica():
-                # if I am master, wither the lock was deleted or someone else got it, shut down
+                # if I am master, but I am not replicating, shut down
                 self.restart(10)
             if owner is None:
+                # No-one has the master lock, try take over
                 self._loop.call_soon(self._loop.create_task, self._try_takeover())
         if self._plugins.master_lock_changed is not None:
             self._plugins.master_lock_changed(owner)
