@@ -390,7 +390,7 @@ class ZooKeeperDeadmanPlugin:
             yield name[len(self._group_name + '-'):], state
     
     @subscribe
-    def dcs_get_all_conn(self):
+    def dcs_get_all_conn_info(self):
         return self._get_all_info('conn')
 
     @subscribe

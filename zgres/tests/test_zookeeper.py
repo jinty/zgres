@@ -154,3 +154,33 @@ async def test_notifications_of_state_chagnge_where_id_has_a_dash(deadman_plugin
     assert callback.mock_calls == [
             mock.call({'i-9b61354f': {'name': 'A'}}),
             ]
+
+@pytest.mark.asyncio
+async def test_groups_are_independant(deadman_plugin):
+    plugin = deadman_plugin
+    pluginA, pluginB, pluginC = plugin('A'), plugin('B'), plugin('C')
+    pluginC._group_name = 'another'
+    # pluginB watches state, plugin A doesn't
+    pluginA.dcs_watch()
+    callbackB = mock.Mock()
+    pluginB.dcs_watch(state=callbackB)
+    callbackC = mock.Mock()
+    pluginC.dcs_watch(state=callbackC)
+    # set state from both plugins
+    pluginA.dcs_set_state(dict(name='A'))
+    pluginB.dcs_set_state(dict(name='B'))
+    pluginC.dcs_set_state(dict(name='C'))
+    await asyncio.sleep(0.005)
+    # pluginB gets events, but ONLY from plugins in its group
+    # i.e. c is ignored
+    # NOTE: we test only the LAST call as state for A and B may come out-of-order
+    #       but the final, rest state, should be correct
+    assert callbackB.mock_calls[-1] == mock.call({'A': {'name': 'A'}, 'B': {'name': 'B'}})
+    # C got it's own event
+    assert callbackC.mock_calls == [
+            mock.call({'C': {'name': 'C'}}),
+            ]
+    # We can get all info
+    assert sorted(pluginA.dcs_get_all_state()) == sorted(pluginB.dcs_get_all_state())
+    assert sorted(pluginA.dcs_get_all_state()) == [('A', {'name': 'A'}), ('B', {'name': 'B'})]
+    assert sorted(pluginC.dcs_get_all_state()) == [('C', {'name': 'C'})]

@@ -81,13 +81,13 @@ def test_dont_unlock_others(pluginAB):
 def test_set_delete_conn_info(pluginAB):
     pluginA, pluginB = pluginAB
     pluginA.dcs_set_conn_info(dict(answer=42))
-    assert sorted(pluginA.dcs_get_all_conn()) == [('A', dict(answer=42))]
+    assert sorted(pluginA.dcs_get_all_conn_info()) == [('A', dict(answer=42))]
     pluginB.dcs_set_conn_info(dict(answer='X'))
-    assert sorted(pluginA.dcs_get_all_conn()) == [('A', dict(answer=42)), ('B', dict(answer='X'))]
-    assert sorted(pluginB.dcs_get_all_conn()) == [('A', dict(answer=42)), ('B', dict(answer='X'))]
+    assert sorted(pluginA.dcs_get_all_conn_info()) == [('A', dict(answer=42)), ('B', dict(answer='X'))]
+    assert sorted(pluginB.dcs_get_all_conn_info()) == [('A', dict(answer=42)), ('B', dict(answer='X'))]
     assert sorted(pluginA.dcs_get_all_state()) == []
     pluginA.dcs_delete_conn_info()
-    assert sorted(pluginB.dcs_get_all_conn()) == [('B', dict(answer='X'))]
+    assert sorted(pluginB.dcs_get_all_conn_info()) == [('B', dict(answer='X'))]
 
 def test_set_delete_info_is_idempotent(plugin):
     plugin = plugin()
@@ -100,10 +100,10 @@ def test_info_is_ephemeral(plugin):
     pluginA = plugin(my_id='A')
     pluginA2 = plugin(my_id='A')
     pluginA.dcs_set_conn_info(dict(server=42))
-    assert sorted(pluginA.dcs_get_all_conn()) == [('A', dict(server=42))]
-    assert sorted(pluginA2.dcs_get_all_conn()) == [('A', dict(server=42))]
+    assert sorted(pluginA.dcs_get_all_conn_info()) == [('A', dict(server=42))]
+    assert sorted(pluginA2.dcs_get_all_conn_info()) == [('A', dict(server=42))]
     pluginA.dcs_disconnect()
-    assert sorted(pluginA2.dcs_get_all_conn()) == []
+    assert sorted(pluginA2.dcs_get_all_conn_info()) == []
 
 @pytest.mark.asyncio
 async def test_master_lock_notification(plugin):
@@ -168,52 +168,41 @@ def test_timelines_persist(pluginAB):
 
 @pytest.mark.asyncio
 async def test_notifications_of_state_chagnges(plugin):
-    pluginA, pluginB, pluginC = plugin('A'), plugin('B'), plugin('C')
-    pluginC._group_name = 'another'
+    pluginA, pluginB = plugin('A'), plugin('B')
     # pluginB watches state, plugin A doesn't
     pluginA.dcs_watch()
     callbackB = mock.Mock()
     pluginB.dcs_watch(state=callbackB)
-    callbackC = mock.Mock()
-    pluginC.dcs_watch(state=callbackC)
     # set state from both plugins
     pluginA.dcs_set_state(dict(name='A'))
     pluginB.dcs_set_state(dict(name='B'))
-    pluginC.dcs_set_state(dict(name='C'))
     await asyncio.sleep(0.005)
     # pluginB gets events, but ONLY from plugins in its group
     # i.e. c is ignored
     # NOTE: we test only the LAST call as state for A and B may come out-of-order
     #       but the final, rest state, should be correct
     assert callbackB.mock_calls[-1] == mock.call({'A': {'name': 'A'}, 'B': {'name': 'B'}})
-    # C got it's own event
-    assert callbackC.mock_calls == [
-            mock.call({'C': {'name': 'C'}}),
-            ]
+    # if we ask for the state, we get the same result
+    assert sorted(pluginA.dcs_get_all_state()) == sorted(pluginB.dcs_get_all_state())
+    assert sorted(pluginA.dcs_get_all_state()) == [('A', {'name': 'A'}), ('B', {'name': 'B'})]
 
 @pytest.mark.asyncio
 async def test_notifications_of_conn_chagnges(plugin):
-    pluginA, pluginB, pluginC = plugin('A'), plugin('B'), plugin('C')
-    pluginC._group_name = 'another'
+    pluginA, pluginB = plugin('A'), plugin('B')
     # pluginB watches conn, plugin A doesn't
     pluginA.dcs_watch()
     callbackB = mock.Mock()
     pluginB.dcs_watch(conn_info=callbackB)
-    callbackC = mock.Mock()
-    pluginC.dcs_watch(conn_info=callbackC)
     # set conn from both plugins
     pluginA.dcs_set_conn_info(dict(name='A'))
     pluginB.dcs_set_conn_info(dict(name='B'))
-    pluginC.dcs_set_conn_info(dict(name='C'))
     await asyncio.sleep(0.005) #sigh, the DCS may use threading, give that a chance
     # pluginB gets events, but ONLY from plugins in its group
     # i.e. c is ignored
     # NOTE: we test only the LAST call as conn for A and B may come out-of-order
     #       but the final, rest conn, should be correct
     assert callbackB.mock_calls[-1] == mock.call({'A': {'name': 'A'}, 'B': {'name': 'B'}})
-    # C got it's own event
-    assert callbackC.mock_calls == [
-            mock.call({'C': {'name': 'C'}}),
-            ]
+    assert sorted(pluginA.dcs_get_all_conn_info()) == sorted(pluginB.dcs_get_all_conn_info())
+    assert sorted(pluginA.dcs_get_all_conn_info()) == [('A', {'name': 'A'}), ('B', {'name': 'B'})]
 
 

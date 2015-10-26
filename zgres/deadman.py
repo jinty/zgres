@@ -72,7 +72,7 @@ _PLUGIN_API = [
         dict(name='dcs_set_conn_info',
             required=True,
             type='multiple'),
-        dict(name='dcs_get_all_conn',
+        dict(name='dcs_get_all_conn_info',
             required=True,
             type='single'),
 
