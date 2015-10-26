@@ -237,7 +237,7 @@ class AptPostgresqlPlugin:
         loop.call_soon(loop.create_task, self._monitor_systemd())
 
     def _is_active(self):
-        return 0 == call(['systemctl', 'is-active', self._service()])
+        return 0 == call(['systemctl', '--quiet', 'is-active', self._service()])
 
     async def _monitor_systemd(self):
         loop = asyncio.get_event_loop()
