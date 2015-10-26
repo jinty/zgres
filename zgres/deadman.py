@@ -287,8 +287,8 @@ class App:
                 self._conn_info[k] = v
         self._state.update(deepcopy(self._conn_info))
 
-    def update_state(self, _force=False, **kw):
-        changed = _force
+    def update_state(self, **kw):
+        changed = False
         for k, v in kw.items():
             if k in self._conn_info:
                 self.logger.warn('Cannot set state for {}={}, key {} has already been set in the connection info'.format(k, v, k))
