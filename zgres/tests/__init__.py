@@ -9,18 +9,21 @@ class FakeSleeper:
     def __init__(self, max_loops=20):
         self.log = []
         self.max_loops = max_loops
-        self.finished = asyncio.Event()
+        self._finished = asyncio.Event()
         self._next = asyncio.Event()
-        self.wait = self.finished.wait
-        asyncio.get_event_loop().call_later(10, self._watchdog)
+        self.wait = self._finished.wait
+        asyncio.get_event_loop().call_later(5, self._watchdog)
 
     def _watchdog(self):
-        self.finished.set()
-        self._next.set()
+        self.finish()
         raise Exception('Timed Out')
 
+    def finish(self):
+        self._finished.set()
+        self._next.set()
+
     def _check_finished(self):
-        if self.finished.is_set():
+        if self._finished.is_set():
             raise AssertionError('Already finished')
 
     async def __call__(self, delay):
@@ -28,15 +31,15 @@ class FakeSleeper:
         self._next.set()
         await sleep(0)
         if self.max_loops is not None and len(self.log) >= self.max_loops:
-            self.finished.set()
+            self.finish()
             await sleep(1)
         self._check_finished()
 
     async def next(self):
         # wait till the next __call__
-        await self._next.wait()
-        self._next.clear()
         self._check_finished()
+        self._next.clear()
+        await self._next.wait()
 
 @pytest.fixture
 def deadman_app():

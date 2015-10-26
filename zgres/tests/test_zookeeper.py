@@ -88,7 +88,7 @@ async def test_session_suspended(deadman_plugin):
     with mock.patch('asyncio.sleep') as sleep:
         sleeper = FakeSleeper(max_loops=2)
         sleep.side_effect = sleeper
-        plugin.app.unhealthy.side_effect = lambda *a, **kw: sleeper.finished.set()
+        plugin.app.unhealthy.side_effect = lambda *a, **kw: sleeper.finish()
         # suspend the connection
         plugin._zk.state = KazooState.SUSPENDED
         plugin._zk._fire_state_change(KazooState.SUSPENDED)
