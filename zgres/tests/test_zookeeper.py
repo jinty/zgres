@@ -140,3 +140,17 @@ async def test_session_connects(deadman_plugin):
     assert plugin.app.mock_calls == [
             mock.call.healthy('zgres#zookeeper.no_zookeeper_connection')
             ]
+
+@pytest.mark.asyncio
+async def test_notifications_of_state_chagnge_where_id_has_a_dash(deadman_plugin):
+    pluginA = deadman_plugin('i-9b61354f')
+    finished = asyncio.Event()
+    asyncio.get_event_loop().call_later(5, finished.set)
+    callback = mock.Mock()
+    callback.side_effect = lambda *args, **kw: finished.set()
+    pluginA.dcs_watch(state=callback)
+    pluginA.dcs_set_state(dict(name='A'))
+    await finished.wait()
+    assert callback.mock_calls == [
+            mock.call({'i-9b61354f': {'name': 'A'}}),
+            ]

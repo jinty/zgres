@@ -201,7 +201,7 @@ class ZooKeeperSource:
 def _get_clusters(in_dict):
     out_dict = {}
     for k, v in in_dict.items():
-        group_name, cluster_id = k.split('-')
+        group_name, cluster_id = k.split('-', 1)
         out_dict.setdefault(group_name, {})[cluster_id] = v
     return out_dict
 
