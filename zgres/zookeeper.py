@@ -408,10 +408,6 @@ class ZooKeeperDeadmanPlugin:
         return self._delete_info('conn')
 
     @subscribe
-    def dcs_delete_state(self):
-        return self._get_all_info('state')
-
-    @subscribe
     def dcs_disconnect(self):
         # for testing only
         self._zk.remove_listener(self._session_state_threadsafe)

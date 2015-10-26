@@ -59,9 +59,6 @@ _PLUGIN_API = [
             required=True,
             type='multiple'),
 
-        dict(name='dcs_delete_state',
-            required=True,
-            type='multiple'),
         dict(name='dcs_set_state',
             required=True,
             type='multiple'),
