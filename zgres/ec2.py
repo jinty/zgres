@@ -111,7 +111,7 @@ class Ec2SnapshotBackupPlugin:
         snapshots = sorted(snapshots.items(), key=lambda x: pg_lsn_to_int(x[0]))
         result = []
         wanted_snaps = set(self._devices)
-        for wal_pos, unorderd_snaps in snapshots:
+        for wal_pos, unordered_snaps in snapshots:
             got_devices = dict([(item.tags.get('zgres:device'), item) for item in unordered_snaps])
             if set(got_devices) != wanted_snaps:
                 # different number of devices, we're ignoring this
