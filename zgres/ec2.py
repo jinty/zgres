@@ -140,7 +140,7 @@ class Ec2SnapshotBackupPlugin:
         return device.replace('/dev/sd', '/dev/xvd')
 
     @subscribe
-    def pg_restore(self, conn):
+    def pg_restore(self):
         conn = self._conn()
         snapshots = self._get_my_snapshots(conn)
         latest = snapshots[-1]
