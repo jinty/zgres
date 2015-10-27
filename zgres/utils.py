@@ -12,6 +12,14 @@ def pg_lsn_to_int(pos):
 def exception_handler(loop, context):
     loop.default_exception_handler(context)
     logging.error('Unexpected exception, exiting...')
+    # sys.exit doesn't work very well, at least not in Python 3.5.0
+    #   see: http://bugs.python.org/issue25489
+    # so we take out insurance by later calling _stop()
+    loop.call_soon(_stop, loop)
+    sys.exit(1)
+
+def _stop(loop):
+    loop.stop()
     sys.exit(1)
 
 def run_asyncio(*callback_and_args):
