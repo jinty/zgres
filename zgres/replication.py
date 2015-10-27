@@ -87,7 +87,7 @@ class SelectFurthestAheadReplica:
 
     async def _set_replication_status(self):
         while True:
-            await sleep(1)
+            await asyncio.sleep(1)
             args = self.app.pg_connect_info()
             conn = psycopg2.connect(**args)
             try:
