@@ -122,7 +122,7 @@ class Ec2SnapshotBackupPlugin:
                 wal_position=wal_pos))
         return result
 
-    def _detach_my_devices(self):
+    def _detach_my_devices(self, conn):
         instance_volumes = self._get_volumes_for_our_devices(conn)
         to_detach = list(self.devices)
         to_detach.reverse()
@@ -140,7 +140,7 @@ class Ec2SnapshotBackupPlugin:
         return device.replace('/dev/sd', '/dev/xvd')
 
     @subscribe
-    def pg_restore(self):
+    def pg_restore(self, conn):
         conn = self._conn()
         snapshots = self._get_my_snapshots(conn)
         latest = snapshots[-1]
