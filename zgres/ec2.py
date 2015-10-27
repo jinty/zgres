@@ -154,7 +154,7 @@ class Ec2SnapshotBackupPlugin:
                     volume_type=d.get('volume_type'),
                     iops=d.get('iops'))
             to_attach[d['device']] = vol
-        self._detach_my_devices()
+        self._detach_my_devices(conn)
         for d in self._device_options:
             to_attach[d['device']].attach(self._instance_id, d['device'])
             check_call(['mount', self._ec2_device_to_local(d['device'])])
