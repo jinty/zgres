@@ -124,7 +124,7 @@ class Ec2SnapshotBackupPlugin:
 
     def _detach_my_devices(self, conn):
         instance_volumes = self._get_volumes_for_our_devices(conn)
-        to_detach = list(self.devices)
+        to_detach = list(self._devices)
         to_detach.reverse()
         for d in to_detach:
             vol = instance_volumes[d]
