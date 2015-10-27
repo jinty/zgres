@@ -379,13 +379,13 @@ class ZooKeeperDeadmanPlugin:
     def _get_all_info(self, type):
         dirpath = self._path_prefix + type
         try:
-            children = self._zk.get_children(dirpath, include_data=True)
+            children = self._zk.get_children(dirpath)
         except kazoo.exceptions.NoNodeError:
             return iter([])
-        for name, data in children:
+        for name in children:
             if not name.startswith(self._group_name + '-'):
                 continue
-            data = data['data']
+            data, state = self._zk.get(dirpath + '/' + name)
             state = json.loads(data.decode('ascii')) 
             yield name[len(self._group_name + '-'):], state
     
