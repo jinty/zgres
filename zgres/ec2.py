@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 
 import boto
@@ -128,11 +129,15 @@ class Ec2SnapshotBackupPlugin:
         to_detach.reverse()
         for d in to_detach:
             vol = instance_volumes[d]
-            check_call(['umount', self._ec2_device_to_local(d)])
+            local_device = self._ec2_device_to_local(d)
+            logging.info('unmounting {}'.format(local_device))
+            check_call(['umount', local_device])
+            logging.info('detaching {}'.format(vol.id))
             if not vol.detach():
                 logging.error('Force detaching {}'.format(d))
                 if not vol.detach(force=True):
                     raise Exception('Could not detach: {}'.format(d))
+            logging.info('deleting {}'.format(vol.id))
             vol.delete()
 
     def _ec2_device_to_local(self, device):
@@ -146,6 +151,7 @@ class Ec2SnapshotBackupPlugin:
         latest = snapshots[-1]
         snaps = latest['snapshots']
         to_attach = {}
+        self._detach_my_devices(conn)
         for d in self._device_options:
             snap = snaps[d['device']]
             vol = snap.create_volume(
@@ -154,7 +160,6 @@ class Ec2SnapshotBackupPlugin:
                     volume_type=d.get('volume_type'),
                     iops=d.get('iops'))
             to_attach[d['device']] = vol
-        self._detach_my_devices(conn)
         for d in self._device_options:
             to_attach[d['device']].attach(self._instance_id, d['device'])
             check_call(['mount', self._ec2_device_to_local(d['device'])])
