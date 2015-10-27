@@ -67,9 +67,9 @@ def test_multiple_plugins(iter_entry_points):
     iter_entry_points.return_value = [plugin2, plugin3, plugin1]
     config = ConfigParser()
     config.read_dict({
-        'whatever': dict(plugins='mymodule#plugin1,mymodule#plugin2'),
-        'whatever_reverse': dict(plugins='mymodule#plugin2,mymodule#plugin1'),
-        'other': dict(plugins='mymodule#plugin2,mymodule#plugin3'),
+        'whatever': dict(plugins='mymodule#plugin1\nmymodule#plugin2'),
+        'whatever_reverse': dict(plugins='mymodule#plugin2\nmymodule#plugin1'),
+        'other': dict(plugins='mymodule#plugin2\nmymodule#plugin3'),
             })
     plugins = load(config, 'whatever')
     plugin1.load.assert_called_once_with(require=False)

@@ -24,7 +24,7 @@ async def test_functional():
     others should be real unit tests.
     """
     config = {'sync': {
-        'plugins': 'zgres#zgres-apply,zgres#zookeeper',
+        'plugins': 'zgres#zgres-apply\nzgres#zookeeper',
         'zookeeper': {
             'connection_string': 'example.org:2181',
             'path': '/databases',
