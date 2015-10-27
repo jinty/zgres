@@ -53,7 +53,7 @@ class SelectFurthestAheadReplica:
 
     @subscribe
     def best_replicas(self, states):
-        nodes = [(wal_sort_key(state), id, state) for id, state in self._willing_replicas()]
+        nodes = [(wal_sort_key(state), id, state) for id, state in states]
         nodes.sort()
         best_key = None
         for sort_key, id, state in nodes:
