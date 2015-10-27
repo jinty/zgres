@@ -55,8 +55,6 @@ def setup_plugins(app, **kw):
     if not pg_am_i_replica:
         defaults['dcs_lock'] = True
     defaults.update(kw)
-    if 'dcs_get_all_state' not in defaults:
-        plugins.dcs_get_all_state.side_effect = state_getter(app)
     for k, v in defaults.items():
         for i in _PLUGIN_API:
             if k == i['name']:
@@ -451,9 +449,6 @@ async def test_replica_tries_to_take_over(app):
     plugins = setup_plugins(app,
             pg_am_i_replica=True)
     assert app.initialize() == None
-    app.update_state(
-            pg_last_xlog_replay_location='68A/16E1DA8',
-            pg_last_xlog_receive_location='68A/16E1DA8')
     plugins.reset_mock()
     # if there is no lock owner, we start looping trying to become master
     app.master_lock_changed(None)
@@ -466,11 +461,18 @@ async def test_replica_tries_to_take_over(app):
         # the first thing is to sleep a bit
         await sleeper.next()
         assert sleeper.log == [3]
+        assert app._plugins.mock_calls == []
         # takeover attempted
+        states = [(app.my_id, {})]
+        plugins.dcs_get_all_state.side_effect = iter_states = [iter(states)]
+        plugins.willing_replicas.side_effect = iter_willing_replicas = [iter(states)]
+        plugins.best_replicas.side_effect = iter_best_replicas = [iter(states)]
         await sleeper.next()
         assert sleeper.log == [3, 3]
         assert app._plugins.mock_calls ==  [
                 call.dcs_get_all_state(),
+                call.willing_replicas(iter_states[0]),
+                call.best_replicas(iter_willing_replicas[0]),
                 call.dcs_lock('master')]
 
 def test_replica_unhealthy(app):
@@ -525,18 +527,22 @@ async def test_master_unhealthy(app):
         exit.side_effect = lambda x: sleeper.finish()
         # there is no replica, so we just sleep and ping the
         # DCS to find a willing replica
-        await sleeper.next()
-        assert plugins.mock_calls == [call.dcs_get_all_state()]
-        await sleeper.next()
-        assert plugins.mock_calls == [call.dcs_get_all_state(), call.dcs_get_all_state()]
-        # we add a willing replica
-        plugins.reset_mock()
-        plugins.dcs_get_all_state.side_effect = state_getter(
-                app,
-                ('not_me', mock_state(replica=True)))
+        states = [iter([])]
+        plugins.dcs_get_all_state.side_effect = states
+        plugins.willing_replicas.side_effect = [iter([])]
         await sleeper.next()
         assert plugins.mock_calls == [
                 call.dcs_get_all_state(),
+                call.willing_replicas(states[0])]
+        # we add a willing replica
+        states = [iter([])]
+        plugins.dcs_get_all_state.side_effect = states
+        plugins.willing_replicas.side_effect = [iter([('other', {})])]
+        plugins.reset_mock()
+        await sleeper.next()
+        assert plugins.mock_calls == [
+                call.dcs_get_all_state(),
+                call.willing_replicas(states[0]),
                 call.pg_am_i_replica(),
                 call.pg_stop(),
                 call.dcs_disconnect()

@@ -1,4 +1,5 @@
 from .plugin import subscribe
+from . import utils
 
 class FollowTheLeader:
 
@@ -29,3 +30,45 @@ class FollowTheLeader:
                 host=master_info['host'],
                 port=master_info.get('port', '5432')))
             self._am_following = self._current_master
+
+def wal_sort_key(state):
+    wal_replay_position = state.get('pg_last_xlog_replay_location', '0/0')
+    wal_replay_position = -utils.pg_lsn_to_int(wal_replay_position)
+    wal_recieve_position = state.get('pg_last_xlog_receive_location', '0/0')
+    wal_recieve_position = -utils.pg_lsn_to_int(wal_recieve_position)
+    return (-wal_recieve_position, -wal_replay_position)
+
+class SelectFurthestAheadReplica:
+
+    def __init__(self, name, app):
+        self.name = name
+        self.app = app
+
+    @subscribe
+    def best_replicas(self, states):
+        nodes = [(wal_sort_key(state), id, state) for id, state in self._willing_replicas()]
+        nodes.sort()
+        best_key = None
+        for sort_key, id, state in nodes:
+            if best_key is None:
+                # first key is the best hey
+                best_key = sort_key
+            if sort_key != best_key:
+                break
+            yield id, state
+
+    @subscribe
+    def willing_replicas(self, states):
+        for id, state in states:
+            if state.get('nofailover', False):
+                continue
+            if state.get('health_problems', True):
+                # if missing, something is wrong, should be an empty dict
+                continue
+            if not state.get('replica', False):
+                continue
+            if 'pg_last_xlog_receive_location' not in state \
+                    or 'pg_last_xlog_replay_location' not in state:
+                # we also need to know the replay location
+                continue
+            yield id, state

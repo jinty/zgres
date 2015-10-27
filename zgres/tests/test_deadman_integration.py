@@ -14,7 +14,7 @@ from . import FakeSleeper
 async def test_functional():
     """Test as much of the whole stack as we can."""
     config = {'deadman': {
-        'plugins': 'zgres#zookeeper,zgres#apt,zgres#ec2-snapshot,zgres#ec2,zgres#follow-the-leader',
+        'plugins': 'zgres#zookeeper,zgres#apt,zgres#ec2-snapshot,zgres#ec2,zgres#follow-the-leader,zgres#select-furthest-ahead-replica',
         }}
     zk = FakeClient()
     with mock.patch('zgres.zookeeper.KazooClient') as KazooClient, \

@@ -31,6 +31,13 @@ _PLUGIN_API = [
         dict(name='master_lock_changed', # subscribe to changes in cluster master
             required=False,
             type='multiple'),
+        
+        dict(name='willing_replicas', # passed an iterator of the state of all nodes, returns an iterator of the state of the replicas which are "willing" to take over
+            required=True,
+            type='single'),
+        dict(name='best_replicas', # passed an iterator of the "willing" replicas (i.e. return value of willing_replicas) and returns an iterator only including the "best" replica for failover
+            required=True,
+            type='single'),
 
         ######### Dealing with the Distributed Configuration system
         # set the database identifier, return True if it can be set, false if not.
@@ -139,13 +146,6 @@ _PLUGIN_API = [
             required=True,
             type='multiple'),
         ]
-
-def wal_sort_key(state):
-    wal_replay_position = state.get('pg_last_xlog_replay_location', '0/0')
-    wal_replay_position = -utils.pg_lsn_to_int(wal_replay_position)
-    wal_recieve_position = state.get('pg_last_xlog_receive_location', '0/0')
-    wal_recieve_position = -utils.pg_lsn_to_int(wal_recieve_position)
-    return (-wal_recieve_position, -wal_replay_position)
 
 class App:
 
@@ -325,40 +325,15 @@ class App:
             self._plugins.master_lock_changed(owner)
 
     def _willing_replicas(self):
-        for id, state in self._plugins.dcs_get_all_state():
-            if state.get('nofailover', False):
-                continue
-            if state.get('health_problems', True):
-                # if missing, something is wrong, should be an empty dict
-                continue
-            if not state.get('replica', False):
-                continue
-            if 'pg_last_xlog_receive_location' not in state \
-                    or 'pg_last_xlog_replay_location' not in state:
-                # we also need to know the replay location
-                continue
-            yield id, state
+        return self._plugins.willing_replicas(self._plugins.dcs_get_all_state())
 
     def _am_i_best_replica(self):
-        nodes = [(wal_sort_key(state), id, state) for id, state in self._willing_replicas()]
-        nodes.sort()
-        best_key = None
-        the_best = []
-        for sort_key, id, state in nodes:
-            if best_key is None:
-                # first key is the best hey
-                best_key = sort_key
-            if sort_key != best_key:
-                continue
-            the_best.append(id)
-            if id != self.my_id:
-                continue
-            # perform final check to see if I am willing
-            if state['pg_last_xlog_replay_location'] != state['pg_last_xlog_receive_location']:
-                self.logger.info('I have recieved the most logs, but not replayed them all yet, waiting a bit')
-                return False
-            return True
-        self.logger.info('Not the best replica because these nodes were better than me: {}'.format(the_best))
+        better = []
+        for id, state in self._plugins.best_replicas(self._willing_replicas()):
+            if id == self.my_id:
+                return True
+            better.append((id, state))
+        self.logger.info('Abstaining from leader election as I am not among the best replicas: {}'.format(better))
         return False
 
     async def _async_sleep(self, delay):
