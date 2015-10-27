@@ -1,5 +1,6 @@
 [Unit]
 Description=Zgres Database Info Sync
+After=cloud-final.service
 
 [Service]
 User=root

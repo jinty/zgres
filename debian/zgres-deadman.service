@@ -1,5 +1,6 @@
 [Unit]
 Description=Zgres Database Controller
+After=cloud-final.service
 
 [Service]
 User=root
@@ -9,7 +10,6 @@ NoNewPrivileges=true
 PrivateDevices=true
 ExecStart=/usr/bin/zgres-deadman
 Restart=always
-After=cloud-final.service
 
 [Install]
 WantedBy=multi-user.target
