@@ -225,16 +225,15 @@ class App:
         else:
             self.my_id = str(uuid.uuid1())
         self.logger.info('My ID is: {}'.format(self.my_id))
-        their_database_id = self._plugins.dcs_get_database_identifier()
-        if their_database_id is None:
+        self.database_identifier = self._plugins.dcs_get_database_identifier()
+        if self.database_identifier is None:
             self.logger.info('Could not find database identifier in DCS, bootstrapping master')
             return self.master_bootstrap()
-        self.logger.info('Found database identifier: {}'.format(their_database_id))
+        self.logger.info('Found database identifier in DCS: {}'.format(self.database_identifier))
         my_database_id = self._plugins.pg_get_database_identifier()
-        if my_database_id != their_database_id:
+        if my_database_id != self.database_identifier:
             self.logger.info('My database identifer is different ({}), bootstrapping as replica'.format(my_database_id))
             return self.replica_bootstrap()
-        self.database_identifier = my_database_id
         am_replica = self._plugins.pg_am_i_replica()
         self.update_state(replica=am_replica)
         if not am_replica:
