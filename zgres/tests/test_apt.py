@@ -81,7 +81,7 @@ async def test_monitoring(plugin, cluster):
                 mock.call.healthy('zgres#apt-systemd'),
                 ]
         subprocess_call.assert_has_calls(
-                [mock.call(['systemctl', 'is-active', 'postgresql@{}-{}.service'.format(*cluster)]),
+                [mock.call(['systemctl', '--quiet', 'is-active', 'postgresql@{}-{}.service'.format(*cluster)]),
                     ] * len(retvals))
 
 @needs_root
