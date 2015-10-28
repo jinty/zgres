@@ -9,6 +9,7 @@ setup(name="zgres",
       description="Database Connection and failover manager for PostgreSQL",
       entry_points={
           'console_scripts': [
+              'zgres-show = zgres.show:show_cli',
               'zgres-apply = zgres.apply:apply_cli',
               'zgres-sync = zgres.sync:sync_cli',
               'zgres-deadman = zgres.deadman:deadman_cli',

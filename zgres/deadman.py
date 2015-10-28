@@ -19,7 +19,7 @@ _PLUGIN_API = [
             type='multiple'),
         # Get the id of this postgresql cluster
         dict(name='get_my_id',
-            required=False,
+            required=True,
             type='single'),
 
         dict(name='notify_state', # subscribe to changes in cluster state
@@ -220,10 +220,7 @@ class App:
         self.unhealthy('zgres.initialize', 'Initializing')
         self.logger.info('Initializing plugins')
         self._plugins.initialize()
-        if self._plugins.get_my_id:
-            self.my_id = self._plugins.get_my_id()
-        else:
-            self.my_id = str(uuid.uuid1())
+        self.my_id = self._plugins.get_my_id()
         self.logger.info('My ID is: {}'.format(self.my_id))
         self.database_identifier = self._plugins.dcs_get_database_identifier()
         if self.database_identifier is None:
