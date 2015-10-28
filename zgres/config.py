@@ -35,7 +35,7 @@ def _setup_logging(config):
         level = logging.INFO
     elif config.debug:
         level = logging.DEBUG
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(level)
     # less than WARN to stderr
     stdout = logging.StreamHandler(sys.stdout)
     stdout.addFilter(StdOutFilter())

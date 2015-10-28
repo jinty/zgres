@@ -28,6 +28,6 @@ def show_cli(argv=sys.argv):
         print('    best replicas:')
         pprint(best_replicas)
         print('    all conn info:')
-        pprint(plugins.dcs_get_all_conn_info())
+        pprint(list(plugins.dcs_get_all_conn_info()))
         print('    all state:')
         pprint(all_state)
