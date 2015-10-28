@@ -15,11 +15,26 @@ def _add_common_args(parser):
             nargs='*',
             default=['/etc/zgres/zgres.ini', '/etc/zgres/zgres.ini.d'],
             help='Use this config file or directory. If a directory, all files ending with .ini are parsed. Order is important with latter files over-riding earlier ones.')
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument('--debug',
+            action='store_true',
+            help='Print extra debug info on stdout')
+    verbosity.add_argument('--verbose',
+            action='store_true',
+            help='Print extra info on stdout')
+    verbosity.add_argument('--quiet',
+            action='store_true',
+            help='Print only errors')
 
 def _setup_logging(config):
     root_logger = logging.getLogger()
-    # TODO: a --debug option which sets the root level to DEBUG
-    # TODO: a --quiet option which sets the root level to WARNING
+    level = logging.WARN
+    if config.quiet:
+        level = logging.ERROR
+    elif config.verbose:
+        level = logging.INFO
+    elif config.debug:
+        level = logging.DEBUG
     root_logger.setLevel(logging.INFO)
     # less than WARN to stderr
     stdout = logging.StreamHandler(sys.stdout)
@@ -46,5 +61,5 @@ def parse_args(parser, argv):
     _add_common_args(parser)
     args = parser.parse_args(args=argv[1:])
     config = _get_config(args)
-    _setup_logging(config)
+    _setup_logging(args)
     return config
