@@ -235,6 +235,7 @@ def test_failed_over_master_start(app):
             call.pg_am_i_replica(),
             # no, so check if there is a master
             call.dcs_lock('master'),
+            call.dcs_get_lock_owner('master'),
             call.pg_stop(),
             # compare our timeline to what's in the DCS
             call.pg_get_timeline(),

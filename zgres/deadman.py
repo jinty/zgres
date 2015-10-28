@@ -236,13 +236,20 @@ class App:
             return self.replica_bootstrap()
         am_replica = self._plugins.pg_am_i_replica()
         self.update_state(replica=am_replica)
-        if not am_replica:
-            if not self._plugins.dcs_lock('master'):
+        if am_replica:
+            self.logger.info('I am a replica, registering myself as such')
+        else:
+            self.logger.info('I am NOT a replica, trying to take over as master')
+            if self._plugins.dcs_lock('master'):
+                self.logger.info('Got master lock, proceedint with startup')
+            else:
+                owner = self._plugins.dcs_get_lock_owner('master')
+                self.logger.info('Failed to get master lock ({} has it), checking if a new master is running yet'.format(owner))
                 self._plugins.pg_stop()
                 my_timeline = self._plugins.pg_get_timeline()
                 existing_timeline = self._plugins.dcs_get_timeline()
                 if existing_timeline > my_timeline:
-                    # a master has started while we didn't have the lock.
+                    self.logger.info("a master has started while we didn't have the lock, resetting ourselves")
                     # we can't start again for risk of split brain
                     self._plugins.pg_reset()
                 else:
