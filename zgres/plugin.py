@@ -44,20 +44,24 @@ def configure(plugins, *args, **kw):
         c_plugins.append((name, plugin))
     return c_plugins
 
-def _handlers_executor(handlers):
+def _handlers_executor(handlers, event_name):
     if not handlers:
         return None
     def call(self, *args, **kw):
-        return [(name, h(*args, **kw)) for name, _, h in handlers]
+        result = [(name, h(*args, **kw)) for name, _, h in handlers]
+        logging.info('event {} called with {}, returning {}'.format(event_name, (args, kw), result))
+        return result
     return call
 
-def _handlers_executor_single(handlers):
+def _handlers_executor_single(handlers, event_name):
     if not handlers:
         return None
     assert len(handlers) == 1
     handler = handlers[0][2]
     def call(self, *args, **kw):
-        return handler(*args, **kw)
+        result = handler(*args, **kw)
+        logging.info('event {} called with {}, returning {}'.format(event_name, (args, kw), result))
+        return result
     return call
 
 def get_event_handler(setup_plugins, events, logger=logging):
@@ -87,11 +91,11 @@ def get_event_handler(setup_plugins, events, logger=logging):
         if spec['required'] and not handlers:
             raise AssertionError('At least one plugin must implement {}'.format(event_name))
         if spec['type'] == 'multiple':
-            executor = _handlers_executor(handlers)
+            executor = _handlers_executor(handlers, event_name)
         elif spec['type'] == 'single':
             if len(handlers) > 1:
                 raise AssertionError('Only one plugin can implement {}'.format(event_name))
-            executor = _handlers_executor_single(handlers)
+            executor = _handlers_executor_single(handlers, event_name)
         else:
             raise NotImplementedError('unknown event spec type')
         setattr(Handler, event_name, executor)
