@@ -18,6 +18,7 @@ def show_cli(argv=sys.argv):
         print('    is replica: {}'.format(plugins.pg_am_i_replica()))
         print('    conn info: {}'.format(plugins.pg_am_i_replica()))
         print('Cluster:')
+        print('    current master: {}'.format(plugins.dcs_get_lock_owner('master')))
         print('    database identifier: {}'.format(plugins.dcs_get_database_identifier()))
         print('    timeline: {}'.format(pformat(plugins.dcs_get_timeline())))
         all_state = list(plugins.dcs_get_all_state())
