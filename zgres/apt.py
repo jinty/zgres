@@ -1,4 +1,5 @@
 import os
+import time
 import shutil
 import asyncio
 from asyncio import sleep
@@ -253,13 +254,34 @@ class AptPostgresqlPlugin:
     def _trigger_file(self):
         return '/var/run/postgresql/{}-{}.master_trigger'.format(self._version, self._cluster_name)
 
+    def _pg_is_in_recovery(self):
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+            cur.execute('SELECT pg_is_in_recovery();')
+            return cur.fetchall()[0][0]
+        finally:
+            conn.close()
+
     @subscribe
     def pg_stop_replication(self):
+        assert self.pg_am_i_replica()
         if self._set_config_values('master.'):
             self.pg_reload()
         trigger_file = self._trigger_file()
         with open(trigger_file, 'w') as f:
             f.write('touched')
+        time.sleep(0.2)
+        count = 0
+        while count < 60:
+            if not self._pg_is_in_recovery():
+                break
+            logging.info('waiting for postgresql to come out of recovery')
+            count += 1
+            time.sleep(1)
+        else:
+            # hmm, what to do here?
+            raise Exception('postgresql did not come out of recovery mode')
 
     @subscribe
     def pg_setup_replication(self, primary_conninfo=None):
