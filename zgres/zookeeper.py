@@ -214,7 +214,7 @@ class ZooKeeperDeadmanPlugin:
         self._monitors = {}
         self.tick_time = app.tick_time # seconds: this should match the zookeeper server tick time (normally specified in milliseconds)
         self.logger = logging
-        self._info_takeovers = {}
+        self._takeovers = {}
 
     def _path(self, type, name=_missing):
         if name is _missing:
@@ -335,19 +335,43 @@ class ZooKeeperDeadmanPlugin:
         self._loop.call_soon_threadsafe(self.app.master_lock_changed, data)
 
     @subscribe
-    def dcs_lock(self, name):
+    def dcs_get_lock_owner(self, name):
         path = self._lock_path(name)
         try:
-            self._zk.create(path, self.app.my_id.encode('utf-8'), ephemeral=True, makepath=True)
+            existing_data, stat = self._zk.get(path)
+        except kazoo.exceptions.NoNodeError:
+            return None
+        return existing_data.decode('utf-8')
+
+    @subscribe
+    def dcs_lock(self, name):
+        data = self.app.my_id.encode('utf-8')
+        path = self._lock_path(name)
+        try:
+            self._zk.create(path, data, ephemeral=True, makepath=True)
             return True
         except kazoo.exceptions.NodeExistsError:
             pass
+        # lock exists, do we have it, can we break it?
         try:
-            owner, stat = self._zk.get(self._lock_path(name))
+            existing_data, stat = self._zk.get(path)
         except kazoo.exceptions.NoNodeError:
-            return False
+            # lock broke while we were looking at it
+            # try get it again
+            return self.dcs_lock(name)
         if stat.owner_session_id == self._zk.client_id[0]:
+            # we already own the lock
             return True
+        elif data == existing_data:
+            # it is our log, perhaps I am restarting. of there are 2 of me running!
+            self._log_takeover(path)
+            try:
+                self._zk.delete(path, version=stat.version)
+            except (kazoo.exceptions.NoNodeError, kazoo.exceptions.BadVersionError):
+                # lock broke while we were looking at it
+                pass
+            # try get the lock again
+            return self.dcs_lock(name)
         return False
 
     @subscribe
@@ -363,6 +387,18 @@ class ZooKeeperDeadmanPlugin:
             return None
         return owner.decode('utf-8')
 
+    def _log_takeover(self, path):
+        if self._takeovers.get(path, False):
+            # hmm, I have taken over before, this is NOT good
+            # maybe 2 of me are running
+            self.logger.error('Taking over again: {}\n'
+                    'This should not happen, check that you do not '
+                    'have 2 nodes with the same id running'.format(path))
+        else:
+            # first time I am taking over, probably normal operation after a restart
+            self.logger.info('Taking over {}'.format(path))
+        self._takeovers[path] = True
+
     def _set_info(self, type, data):
         path = self._path(type)
         data = json.dumps(data)
@@ -372,16 +408,7 @@ class ZooKeeperDeadmanPlugin:
         except kazoo.exceptions.NoNodeError:
             stat = None
         if stat is not None and stat.owner_session_id != self._zk.client_id[0]:
-            if self._info_takeovers.get(path, False):
-                # hmm, I have taken over before, this is NOT good
-                # maybe 2 of me are running
-                self.logger.error('Taking over again: {}\n'
-                        'This should not happen, check that you do not '
-                        'have 2 nodes with the same id running'.format(path))
-            else:
-                # first time I am taking over, probably normal operation after a restart
-                self.logger.info('Taking over {}'.format(path))
-            self._info_takeovers[path] = True
+            self._log_takeover(path)
             self._zk.delete(path)
             stat = None
         if stat is None:

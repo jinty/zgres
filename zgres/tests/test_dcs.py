@@ -65,12 +65,19 @@ def test_locks_idempotency(pluginAB):
     pluginA.dcs_unlock('mylock')
     assert pluginB.dcs_lock('mylock') == True
 
-def test_locks_are_attached_to_the_connection_NOT_id(plugin):
+def test_I_can_break_my_own_lock(plugin):
     # a second plugin with a second connection cannot re-lock the same lock
     pluginA1 = plugin(my_id='A')
     pluginA2 = plugin(my_id='A')
+    pluginB = plugin(my_id='B')
     assert pluginA1.dcs_lock('mylock') == True
-    assert pluginA2.dcs_lock('mylock') == False
+    assert pluginA2.dcs_lock('mylock') == True
+    # A2's lock is persistent even on disconnect of A1
+    pluginA1.dcs_disconnect()
+    assert pluginB.dcs_get_lock_owner('mylock') == 'A'
+    assert pluginB.dcs_lock('mylock') == False
+    assert pluginA2.dcs_lock('mylock') == True
+    assert pluginA2.dcs_lock('mylock') == True
 
 def test_dont_unlock_others(pluginAB):
     pluginA, pluginB = pluginAB
