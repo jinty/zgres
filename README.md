@@ -138,3 +138,11 @@ Dependencies
  * systemd
  * kazoo - ZooKeeper client
  * psycopg2 - connections to PostgreSQL
+
+Acknowledgment
+--------------
+
+Zgres is heavily influenced by HandyRep
+(https://github.com/pgexperts/handyrep) and Patroni
+(https://github.com/zalando/patroni). Many thanks to the developers of
+those for some great ideas.
