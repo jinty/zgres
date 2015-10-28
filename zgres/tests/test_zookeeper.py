@@ -184,3 +184,21 @@ async def test_groups_are_independant(deadman_plugin):
     assert sorted(pluginA.dcs_get_all_state()) == sorted(pluginB.dcs_get_all_state())
     assert sorted(pluginA.dcs_get_all_state()) == [('A', {'name': 'A'}), ('B', {'name': 'B'})]
     assert sorted(pluginC.dcs_get_all_state()) == [('C', {'name': 'C'})]
+
+def test_errorlog_after_second_takeover(deadman_plugin):
+    plugin = deadman_plugin
+    # 2 servers with the same id should NOT happen in real life...
+    pluginA1 = plugin(my_id='A')
+    pluginA2 = plugin(my_id='A')
+    pluginA2.logger = mock.Mock()
+    # now they start to fight
+    pluginA1.dcs_set_state(dict(server=41))
+    pluginA2.dcs_set_state(dict(server=42)) 
+    pluginA1.dcs_set_state(dict(server=43))
+    # this is the second time plugin2 is taking over
+    # We should log an error message now
+    assert not pluginA2.logger.error.called
+    pluginA2.dcs_set_state(dict(server=44)) 
+    assert pluginA2.logger.error.called
+    # though the state is still set
+    assert sorted(pluginA1.dcs_get_all_state()) == [('A', dict(server=44))]

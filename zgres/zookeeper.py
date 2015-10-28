@@ -1,6 +1,7 @@
 import json
 import asyncio
 import queue
+import logging
 from functools import partial
 from collections.abc import Mapping
 
@@ -212,6 +213,8 @@ class ZooKeeperDeadmanPlugin:
         self.app = app
         self._monitors = {}
         self.tick_time = app.tick_time # seconds: this should match the zookeeper server tick time (normally specified in milliseconds)
+        self.logger = logging
+        self._info_takeovers = {}
 
     def _path(self, type, name=_missing):
         if name is _missing:
@@ -361,11 +364,27 @@ class ZooKeeperDeadmanPlugin:
         return owner.decode('utf-8')
 
     def _set_info(self, type, data):
+        path = self._path(type)
         data = json.dumps(data)
         data = data.encode('ascii')
         try:
-            self._zk.set(self._path(type), data)
+            stat = self._zk.set(path, data)
         except kazoo.exceptions.NoNodeError:
+            stat = None
+        if stat is not None and stat.owner_session_id != self._zk.client_id[0]:
+            if self._info_takeovers.get(path, False):
+                # hmm, I have taken over before, this is NOT good
+                # maybe 2 of me are running
+                self.logger.error('Taking over again: {}\n'
+                        'This should not happen, check that you do not '
+                        'have 2 nodes with the same id running'.format(path))
+            else:
+                # first time I am taking over, probably normal operation after a restart
+                self.logger.info('Taking over {}'.format(path))
+            self._info_takeovers[path] = True
+            self._zk.delete(path)
+            stat = None
+        if stat is None:
             self._zk.create(self._path(type), data, ephemeral=True, makepath=True)
 
     @subscribe

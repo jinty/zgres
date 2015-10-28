@@ -205,4 +205,16 @@ async def test_notifications_of_conn_chagnges(plugin):
     assert sorted(pluginA.dcs_get_all_conn_info()) == sorted(pluginB.dcs_get_all_conn_info())
     assert sorted(pluginA.dcs_get_all_conn_info()) == [('A', {'name': 'A'}), ('B', {'name': 'B'})]
 
-
+def test_info_set_from_another_plugin_ephemeral(plugin):
+    # 2 servers with the same id should NOT happen in real life...
+    pluginA1 = plugin(my_id='A')
+    pluginA2 = plugin(my_id='A')
+    pluginA3 = plugin(my_id='A')
+    # 2 plugins set the same info, but the first gets
+    # disconnected after the second has already set the info
+    pluginA1.dcs_set_conn_info(dict(server=41))
+    pluginA2.dcs_set_conn_info(dict(server=42)) 
+    pluginA1.dcs_disconnect()
+    # in this case, the info should still be set
+    assert sorted(pluginA2.dcs_get_all_conn_info()) == [('A', dict(server=42))]
+    assert sorted(pluginA3.dcs_get_all_conn_info()) == [('A', dict(server=42))]
