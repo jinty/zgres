@@ -208,7 +208,13 @@ class AptPostgresqlPlugin:
         if os.path.exists(self._config_file()):
             self.pg_stop()
             check_call(['pg_dropcluster', '--stop', self._version, self._cluster_name])
-        check_call(['pg_createcluster', self._version, self._cluster_name])
+        create_args = ['pg_createcluster', self._version, self._cluster_name]
+        initdb_options = self.app.config['apt'].get('initdb_options', '').strip()
+        if initdb_options:
+            initdb_options = [i.strip() for i in initdb_options.split() if i.strip()]
+            create_args.append('--')
+            create_args.extend(initdb_options)
+        check_call(['pg_createcluster', self._version, self._cluster_name, '--', '--data-checksums'])
         self._copy_config()
         self._set_config_values()
         if self._create_superuser:
