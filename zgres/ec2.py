@@ -52,7 +52,7 @@ def _wait_for_volume_attached(vol):
     while True:
         # we wait forever, otherwise we could get an EXPENSIVE runaway that creates MANY LARGE volumes
         vol.update()
-        if vol.status == 'in-use' and vol.attach_data.state == 'attached'
+        if vol.status == 'in-use' and vol.attach_data.state == 'attached':
             break
         time.sleep(5)
         logging.warn('Waiting for volume to be available: {} ({})'.format(vol.id, vol.status, vol.attach_data.state))
