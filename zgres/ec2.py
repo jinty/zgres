@@ -36,17 +36,17 @@ class Ec2Plugin:
                 'availability-zone': self._metadata['placement']['availability-zone'],
                 }
 
-def _wait_for_volume_avilable(vol, timeout=60):
-    count = 0
-    while count < timeout:
-        vol.update()
+def _wait_for_volume_avilable(vol):
+    time.sleep(1)
+    while True:
+        # we wait forever, otherwise we could get an EXPENSIVE runaway that creates MANY LARGE volumes
         count += 1
-        if vol.attachment_state == 'available':
+        vol.update()
+        status = vol.attachment_state()
+        if status == 'available':
             break
-        time.sleep(1)
-        logging.warn('Waiting for volume to be available: {}'.format(vol.id))
-    if vol.attachment_state != 'available':
-        raise Exception('volume never became available')
+        time.sleep(5)
+        logging.warn('Waiting for volume to be available: {} ({})'.format(vol.id, status))
 
 class Ec2SnapshotBackupPlugin:
 
