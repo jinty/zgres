@@ -47,6 +47,16 @@ def _wait_for_volume_avilable(vol):
         time.sleep(5)
         logging.warn('Waiting for volume to be available: {} ({})'.format(vol.id, status))
 
+def _wait_for_volume_attached(vol):
+    time.sleep(1)
+    while True:
+        # we wait forever, otherwise we could get an EXPENSIVE runaway that creates MANY LARGE volumes
+        vol.update()
+        if vol.status == 'in-use' and vol.attach_data.state == 'attached'
+            break
+        time.sleep(5)
+        logging.warn('Waiting for volume to be available: {} ({})'.format(vol.id, vol.status, vol.attach_data.state))
+
 class Ec2SnapshotBackupPlugin:
 
     _backing_up = asyncio.Lock()
@@ -147,7 +157,7 @@ class Ec2SnapshotBackupPlugin:
         for d in to_detach:
             local_device = self._ec2_device_to_local(d)
             if not os.path.exists(local_device):
-                assert d not in instance_volumes
+                assert d not in instance_volumes, (d, instance_volumes)
                 # was never there!
                 continue
             vol = instance_volumes[d]
@@ -186,7 +196,7 @@ class Ec2SnapshotBackupPlugin:
                     iops=d.get('iops'))
             to_attach[d['device']] = vol
         for vol in to_attach.values():
-            _wait_for_volume_avilable(vol)
+            _wait_for_volume_attached(vol)
         for d in self._device_options:
             to_attach[d['device']].attach(self._instance_id, d['device'])
             check_call(['mount', self._ec2_device_to_local(d['device'])])
