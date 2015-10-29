@@ -145,11 +145,12 @@ class Ec2SnapshotBackupPlugin:
         to_detach = list(self._devices)
         to_detach.reverse()
         for d in to_detach:
-            vol = instance_volumes[d]
             local_device = self._ec2_device_to_local(d)
             if not os.path.exists(local_device):
+                assert d not in instance_volumes
                 # was never there!
                 continue
+            vol = instance_volumes[d]
             logging.info('unmounting {}'.format(local_device))
             check_call(['umount', local_device])
             mounts = check_output(['mount']).decode('latin-1')
