@@ -1,3 +1,4 @@
+import os
 import asyncio
 import logging
 import uuid
@@ -34,6 +35,17 @@ class Ec2Plugin:
                 'ami-id': self._metadata['ami-id'],
                 'availability-zone': self._metadata['placement']['availability-zone'],
                 }
+
+def _wait_for_volume_avilable(vol, timeout=60):
+    while count < timeout:
+        vol.update()
+        count += 1
+        if vol.attachment_state == 'available':
+            break
+        time.sleep(1)
+        logging.warn('Waiting for volume to be available: {}'.format(d))
+    if vol.attachment_state != 'available':
+        raise Exception('volume never became available')
 
 class Ec2SnapshotBackupPlugin:
 
@@ -139,6 +151,9 @@ class Ec2SnapshotBackupPlugin:
         for d in to_detach:
             vol = instance_volumes[d]
             local_device = self._ec2_device_to_local(d)
+            if not os.path.exists(local_device):
+                # was never there!
+                continue
             logging.info('unmounting {}'.format(local_device))
             check_call(['umount', local_device])
             mounts = check_output(['mount']).decode('latin-1')
@@ -149,17 +164,7 @@ class Ec2SnapshotBackupPlugin:
                     raise Exception('Device did not unmount:\n{}'.format(mounts))
             logging.info('detaching {}'.format(vol.id))
             vol.detach()
-            time.sleep(1)
-            count = 0
-            while count < 60:
-                count += 1
-                if vol.attachment_state == 'available':
-                    break
-                vol.update()
-                time.sleep(1)
-                logging.warn('Waiting for volument to detach: {}'.format(d))
-            if vol.attachment_state == 'available':
-                raise Exception('Could not detach volume')
+            _wait_for_volume_avilable(vol)
             logging.info('deleting {}'.format(vol.id))
             vol.delete()
 
@@ -183,6 +188,8 @@ class Ec2SnapshotBackupPlugin:
                     volume_type=d.get('volume_type'),
                     iops=d.get('iops'))
             to_attach[d['device']] = vol
+        for vol in to_attach.values():
+            _wait_for_volume_avilable(vol)
         for d in self._device_options:
             to_attach[d['device']].attach(self._instance_id, d['device'])
             check_call(['mount', self._ec2_device_to_local(d['device'])])
