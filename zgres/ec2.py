@@ -188,6 +188,7 @@ class Ec2SnapshotBackupPlugin:
         snaps = latest['snapshots']
         to_attach = {}
         self._detach_my_devices(conn)
+        logging.info('Creating volumes for {}'.format(list(self._device_options)))
         for d in self._device_options:
             snap = snaps[d['device']]
             vol = snap.create_volume(
@@ -199,11 +200,14 @@ class Ec2SnapshotBackupPlugin:
         # wait for all the volumes to be available
         for vol in to_attach.values():
             _wait_for_volume_available(vol)
+        logging.info('Attaching volumes')
         # attach and wait for the volumes to be attached
         for d in self._device_options:
             to_attach[d['device']].attach(self._instance_id, d['device'])
         for vol in to_attach.values():
             _wait_for_volume_attached(vol)
+        logging.info('Mounting everything')
         # finally, actually mount them all
         for d in self._device_options:
-            check_call(['mount', self._ec2_device_to_local(d['device'])])
+            # systemd may already have mounted it, let's be sure it worked before continuing
+            check_call(['mount', '--all'])
