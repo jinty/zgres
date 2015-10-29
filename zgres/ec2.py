@@ -36,7 +36,7 @@ class Ec2Plugin:
                 'availability-zone': self._metadata['placement']['availability-zone'],
                 }
 
-def _wait_for_volume_avilable(vol):
+def _wait_for_volume_available(vol):
     time.sleep(5)
     while True:
         # we wait forever, otherwise we could get an EXPENSIVE runaway that creates MANY LARGE volumes
@@ -172,7 +172,7 @@ class Ec2SnapshotBackupPlugin:
                     raise Exception('Device did not unmount:\n{}'.format(mounts))
             logging.info('detaching {}'.format(vol.id))
             vol.detach()
-            _wait_for_volume_avilable(vol)
+            _wait_for_volume_available(vol)
             logging.info('deleting {}'.format(vol.id))
             vol.delete()
 
