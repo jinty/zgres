@@ -208,6 +208,12 @@ class Ec2SnapshotBackupPlugin:
             _wait_for_volume_attached(vol)
         logging.info('Mounting everything')
         # finally, actually mount them all
-        for d in self._device_options:
+        for i in range(60):
             # systemd may already have mounted it, let's be sure it worked before continuing
+            try:
+                check_call(['mount', '--all'])
+            except Exception:
+                time.sleep(5)
+            break
+        else:
             check_call(['mount', '--all'])
