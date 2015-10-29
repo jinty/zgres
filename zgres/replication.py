@@ -103,7 +103,7 @@ class SelectFurthestAheadReplica:
             await asyncio.sleep(1)
             args = self.app.pg_connect_info()
             try:
-                results = _get_location(self, args)
+                results = self._get_location(args)
             except psycopg2.OperationalError as e:
                 logging.warn('Could not get wal location from postgresql: {}'.format(e))
                 results = (None, None)
