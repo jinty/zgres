@@ -4,9 +4,6 @@ After=cloud-final.service
 
 [Service]
 User=root
-PrivateTmp=true
-ProtectHome=read-only
-NoNewPrivileges=true
 ExecStart=/usr/bin/zgres-deadman --verbose
 Restart=always
 
