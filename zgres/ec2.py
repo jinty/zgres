@@ -37,6 +37,7 @@ class Ec2Plugin:
                 }
 
 def _wait_for_volume_avilable(vol, timeout=60):
+    count = 0
     while count < timeout:
         vol.update()
         count += 1
