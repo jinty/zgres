@@ -181,9 +181,12 @@ class App:
 
     def replica_bootstrap(self):
         self._plugins.pg_stop()
+        # some restore methods only restore data, not config files, so let's init first
+        self._plugins.pg_initdb()
         self._plugins.pg_restore()
         self._plugins.pg_setup_replication()
-        if not self._plugins.pg_am_i_replica():
+        my_database_id = self._plugins.pg_get_database_identifier()
+        if not self._plugins.pg_am_i_replica() or my_database_id != self.database_identifier:
             # destroy our current cluster
             self._plugins.pg_reset()
             logging.error("Something is seriously wrong: after restoring postgresql was NOT setup as a replica.")

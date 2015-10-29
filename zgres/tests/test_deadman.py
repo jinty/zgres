@@ -123,8 +123,8 @@ def test_master_boostrap_fails_to_lock_db_id(app):
 
 def test_replica_bootstrap(app):
     plugins = setup_plugins(app,
-            dcs_get_database_identifier='1234',
-            pg_get_database_identifier='42')
+            dcs_get_database_identifier='1234')
+    plugins.pg_get_database_identifier.side_effect = ['42', '1234']
     timeout = app.initialize()
     assert app._plugins.mock_calls ==  [
             call.initialize(),
@@ -135,8 +135,10 @@ def test_replica_bootstrap(app):
             # make sure postgresql is stopped
             call.pg_stop(),
             # postgresql restore
+            call.pg_initdb(),
             call.pg_restore(),
             call.pg_setup_replication(),
+            call.pg_get_database_identifier(),
             call.pg_am_i_replica()
             ]
     # shut down cleanly and immediately
@@ -157,8 +159,10 @@ def test_replica_bootstrap_fails_sanity_test(app):
             # make sure postgresql is stopped
             call.pg_stop(),
             # postgresql restore
+            call.pg_initdb(),
             call.pg_restore(),
             call.pg_setup_replication(),
+            call.pg_get_database_identifier(),
             call.pg_am_i_replica(),
             call.pg_reset(),
             ]
