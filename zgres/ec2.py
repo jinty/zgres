@@ -115,13 +115,13 @@ class Ec2SnapshotBackupPlugin:
                     'zgres:wal_position': position,
                     'zgres:device': d})
                 count = 0
-                while snap.status not in ('completed', 'error') and count < 720:
+                while snapshot.status not in ('completed', 'error') and count < 720:
                     count += 1
                     time.sleep(10)
-                    snap.update()
-                    logging.info('Waiting for snapshot {} to complete'.format(snap.id))
-                if snap.state != 'completed':
-                    raise Exception('Snapshot did not complete: {}'.format(snap.state))
+                    snapshot.update()
+                    logging.info('Waiting for snapshot {} to complete'.format(snapshot.id))
+                if snapshot.state != 'completed':
+                    raise Exception('Snapshot did not complete: {}'.format(snapshot.state))
         finally:
             pg_conn.cursor().execute("select pg_stop_backup();")
 
