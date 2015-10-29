@@ -279,9 +279,7 @@ class AptPostgresqlPlugin:
                 if not self._pg_is_in_recovery():
                     break
             except psycopg2.OperationalError as e:
-                print(e.pgcode)
-                print(psycopg2.errorcodes.lookup(e.pgcode))
-                raise
+                pass
             logging.info('waiting for postgresql to come out of recovery')
             count += 1
             time.sleep(1)
