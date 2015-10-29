@@ -37,7 +37,7 @@ class Ec2Plugin:
                 }
 
 def _wait_for_volume_avilable(vol):
-    time.sleep(1)
+    time.sleep(5)
     while True:
         # we wait forever, otherwise we could get an EXPENSIVE runaway that creates MANY LARGE volumes
         vol.update()
@@ -48,14 +48,15 @@ def _wait_for_volume_avilable(vol):
         logging.warn('Waiting for volume to be available: {} ({})'.format(vol.id, status))
 
 def _wait_for_volume_attached(vol):
-    time.sleep(1)
+    time.sleep(5)
     while True:
         # we wait forever, otherwise we could get an EXPENSIVE runaway that creates MANY LARGE volumes
         vol.update()
-        if vol.status == 'in-use' and vol.attach_data.state == 'attached':
+        attach_state = vol.attachment_state()
+        if vol.status == 'in-use' and attach_state == 'attached':
             break
         time.sleep(5)
-        logging.warn('Waiting for volume to be available: {} ({})'.format(vol.id, vol.status, vol.attach_data.state))
+        logging.warn('Waiting for volume to be attach: {} ({})'.format(vol.id, vol.status, attach_state))
 
 class Ec2SnapshotBackupPlugin:
 
@@ -195,8 +196,14 @@ class Ec2SnapshotBackupPlugin:
                     volume_type=d.get('volume_type'),
                     iops=d.get('iops'))
             to_attach[d['device']] = vol
+        # wait for all the volumes to be available
         for vol in to_attach.values():
-            _wait_for_volume_attached(vol)
+            _wait_for_volume_available(vol)
+        # attach and wait for the volumes to be attached
         for d in self._device_options:
             to_attach[d['device']].attach(self._instance_id, d['device'])
+        for vol in to_attach.values():
+            _wait_for_volume_attached(vol)
+        # finally, actually mount them all
+        for d in self._device_options:
             check_call(['mount', self._ec2_device_to_local(d['device'])])
