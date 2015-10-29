@@ -44,7 +44,7 @@ def _wait_for_volume_avilable(vol, timeout=60):
         if vol.attachment_state == 'available':
             break
         time.sleep(1)
-        logging.warn('Waiting for volume to be available: {}'.format(d))
+        logging.warn('Waiting for volume to be available: {}'.format(vol.id))
     if vol.attachment_state != 'available':
         raise Exception('volume never became available')
 
