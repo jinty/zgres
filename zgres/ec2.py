@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import uuid
+import time
 
 import boto
 import boto.ec2
@@ -94,6 +95,14 @@ class Ec2SnapshotBackupPlugin:
                     'zgres:db_id': self.app.database_identifier,
                     'zgres:wal_position': position,
                     'zgres:device': d})
+                count = 0
+                while snap.status not in ('completed', 'error') and count < 720:
+                    count += 1
+                    time.sleep(10)
+                    snap.update()
+                    logging.info('Waiting for snapshot {} to complete'.format(snap.id))
+                if snap.state != 'completed':
+                    raise Exception('Snapshot did not complete: {}'.format(snap.state))
         finally:
             pg_conn.cursor().execute("select pg_stop_backup();")
 
@@ -132,11 +141,24 @@ class Ec2SnapshotBackupPlugin:
             local_device = self._ec2_device_to_local(d)
             logging.info('unmounting {}'.format(local_device))
             check_call(['umount', local_device])
+            mounts = check_output(['mount']).decode('latin-1')
+            for i in mounts.splitlines():
+                parts = i.split()
+                if parts and parts[0] == local_device:
+                    check_call(['fuser', '-m', '-u', 'local_device'])
+                    raise Exception('Device did not unmount:\n{}'.format(mounts))
             logging.info('detaching {}'.format(vol.id))
-            if not vol.detach():
+            vol.detach()
+            count = 0
+            while count < 20:
+                count += 1
+                if vol.state == 'available':
+                    break
+                vol.update()
+                time.sleep(1)
                 logging.error('Force detaching {}'.format(d))
-                if not vol.detach(force=True):
-                    raise Exception('Could not detach: {}'.format(d))
+            if vol.state == 'available':
+                raise Exception('Could not detach volume')
             logging.info('deleting {}'.format(vol.id))
             vol.delete()
 
