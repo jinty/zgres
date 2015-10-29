@@ -1,5 +1,7 @@
-import psycopg2
+import logging
 import asyncio
+
+import psycopg2
 
 from .plugin import subscribe
 from . import utils
@@ -74,8 +76,8 @@ class SelectFurthestAheadReplica:
                 continue
             if not state.get('replica', False):
                 continue
-            if 'pg_last_xlog_receive_location' not in state \
-                    or 'pg_last_xlog_replay_location' not in state:
+            if state.get('pg_last_xlog_receive_location', None) is None \
+                    or state.get('pg_last_xlog_replay_location', None) is None:
                 # we also need to know the replay location
                 continue
             yield id, state
@@ -85,18 +87,26 @@ class SelectFurthestAheadReplica:
         loop = asyncio.get_event_loop()
         loop.call_soon(loop.create_task, self._set_replication_status())
 
+    def _get_location(self, conn_args):
+        conn = psycopg2.connect(**conn_args)
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT pg_last_xlog_replay_location(), pg_last_xlog_receive_location()")
+            results = cur.fetchall()[0]
+        finally:
+            conn.rollback()
+            conn.close()
+        return results
+
     async def _set_replication_status(self):
         while True:
             await asyncio.sleep(1)
             args = self.app.pg_connect_info()
-            conn = psycopg2.connect(**args)
             try:
-                cur = conn.cursor()
-                cur.execute("SELECT pg_last_xlog_replay_location(), pg_last_xlog_receive_location()")
-                results = cur.fetchall()[0]
-            finally:
-                conn.rollback()
-                conn.close()
+                results = _get_location(self, args)
+            except psycopg2.OperationalError as e:
+                logging.warn('Could not get wal location from postgresql: {}'.format(e))
+                results = (None, None)
             self.app.update_state(
                     pg_last_xlog_replay_location=results[0],
                     pg_last_xlog_receive_location=results[1])
