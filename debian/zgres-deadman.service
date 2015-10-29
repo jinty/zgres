@@ -7,7 +7,6 @@ User=root
 PrivateTmp=true
 ProtectHome=read-only
 NoNewPrivileges=true
-PrivateDevices=true
 ExecStart=/usr/bin/zgres-deadman --verbose
 Restart=always
 
