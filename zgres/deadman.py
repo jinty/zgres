@@ -183,7 +183,12 @@ class App:
         self._plugins.pg_stop()
         # some restore methods only restore data, not config files, so let's init first
         self._plugins.pg_initdb()
-        self._plugins.pg_restore()
+        try:
+            self._plugins.pg_restore()
+        except Exception:
+            # try make sure we don't restore a master by mistake
+            self._plugins.pg_reset()
+            raise
         self._plugins.pg_setup_replication()
         my_database_id = self._plugins.pg_get_database_identifier()
         if not self._plugins.pg_am_i_replica() or my_database_id != self.database_identifier:
