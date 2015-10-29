@@ -40,7 +40,6 @@ def _wait_for_volume_avilable(vol):
     time.sleep(1)
     while True:
         # we wait forever, otherwise we could get an EXPENSIVE runaway that creates MANY LARGE volumes
-        count += 1
         vol.update()
         status = vol.attachment_state()
         if status == 'available':
