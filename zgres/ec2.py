@@ -149,14 +149,15 @@ class Ec2SnapshotBackupPlugin:
                     raise Exception('Device did not unmount:\n{}'.format(mounts))
             logging.info('detaching {}'.format(vol.id))
             vol.detach()
+            time.sleep(1)
             count = 0
-            while count < 20:
+            while count < 60:
                 count += 1
                 if vol.attachment_state == 'available':
                     break
                 vol.update()
                 time.sleep(1)
-                logging.error('Force detaching {}'.format(d))
+                logging.warn('Waiting for volument to detach: {}'.format(d))
             if vol.attachment_state == 'available':
                 raise Exception('Could not detach volume')
             logging.info('deleting {}'.format(vol.id))
