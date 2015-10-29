@@ -78,10 +78,6 @@ class Ec2SnapshotBackupPlugin:
         for v in conn.get_all_volumes(filters={'attachment.instance-id': self._instance_id}):
             assert v.attach_data.instance_id == self._instance_id
             instance_volumes[v.attach_data.device] = v
-        for d in self._devices:
-            if d not in instance_volumes:
-                raise Exception('Device {} in my config is not one that is attached to this instance. I have: {}'.format(
-                    d, instance_volumes))
         return instance_volumes
 
     def _uuid(self):
