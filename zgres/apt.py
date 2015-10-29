@@ -7,6 +7,7 @@ import logging
 from subprocess import check_output, call, check_call
 
 import psycopg2
+import psycopg2.errorcodes
 
 from . import systemd
 from .plugin import subscribe
@@ -274,8 +275,13 @@ class AptPostgresqlPlugin:
         time.sleep(0.2)
         count = 0
         while count < 60:
-            if not self._pg_is_in_recovery():
-                break
+            try:
+                if not self._pg_is_in_recovery():
+                    break
+            except psycopg2.OperationalError as e:
+                print(e.pgcode)
+                print(psycopg2.errorcodes.lookup(e.pgcode))
+                raise
             logging.info('waiting for postgresql to come out of recovery')
             count += 1
             time.sleep(1)
