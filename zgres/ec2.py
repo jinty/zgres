@@ -8,7 +8,7 @@ import boto.ec2
 import boto.utils
 import psycopg2
 
-from subprocess import check_call
+from subprocess import check_call, check_output
 
 from .utils import pg_lsn_to_int
 from .plugin import subscribe
@@ -152,12 +152,12 @@ class Ec2SnapshotBackupPlugin:
             count = 0
             while count < 20:
                 count += 1
-                if vol.state == 'available':
+                if vol.attachment_state == 'available':
                     break
                 vol.update()
                 time.sleep(1)
                 logging.error('Force detaching {}'.format(d))
-            if vol.state == 'available':
+            if vol.attachment_state == 'available':
                 raise Exception('Could not detach volume')
             logging.info('deleting {}'.format(vol.id))
             vol.delete()
