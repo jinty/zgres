@@ -170,7 +170,7 @@ class AptPostgresqlPlugin:
     def pg_get_timeline(self):
         if not os.path.exists(self._config_file()):
             return None
-        if self._is_active():
+        if self._is_active() and not self._pg_is_in_recovery():
             conn = self._conn()
             cur = conn.cursor()
             cur.execute('SELECT pg_xlogfile_name(pg_current_xlog_insert_location());')
@@ -183,7 +183,6 @@ class AptPostgresqlPlugin:
                     self._data_dir(),
                     "Latest checkpoint's TimeLineID")
             return int(val)
-        return int(val)
 
     def _pg_accepts_connections(self):
         retval = call(['sudo', '-u', 'postgres', 'psql', '-h', self._socket_dir(), '-p', self._port(), '-c', 'SELECT 1'])
