@@ -23,6 +23,9 @@ def _pg_controldata_value(pg_version, data_dir, key):
             return value.strip()
     raise ValueError('could not find value for "{}"'.format(key))
 
+class _NoCluster(Exception):
+    pass
+
 class AptPostgresqlPlugin:
     """Plugin for controlling postgresql installed by apt.
 
@@ -70,6 +73,8 @@ class AptPostgresqlPlugin:
         value = check_call(['pg_conftool', self._version, self._cluster_name, 'set', key, value])
 
     def _get_conf_value(self, key):
+        if not os.path.exists(self._config_file()):
+            raise _NoCluster()
         value = check_output(['pg_conftool', '-s', self._version, self._cluster_name, 'show', key])
         value = value.decode('ascii').strip() # encoding unspecified, ascii is safe...
         if value.startswith("'") and value.endswith("'"):
@@ -236,7 +241,10 @@ class AptPostgresqlPlugin:
 
     @subscribe
     def pg_replication_role(self):
-        return os.path.exists(os.path.join(self._data_dir(), 'recovery.conf')) and 'replica' or 'master'
+        try:
+            return os.path.exists(os.path.join(self._data_dir(), 'recovery.conf')) and 'replica' or 'master'
+        except _NoCluster:
+            return None
 
     @subscribe
     def start_monitoring(self):
