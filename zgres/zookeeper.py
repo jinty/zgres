@@ -181,9 +181,9 @@ class ZooKeeperSource:
 
     @subscribe
     def start_watching(self):
-        self.zk = KazooClient(hosts=self.app.config['sync']['zookeeper']['connection_string'])
+        self.zk = KazooClient(hosts=self.app.config['zookeeper']['connection_string'])
         self.zk.start()
-        self.watcher = DictWatch(self.zk, self.app.config['sync']['zookeeper']['path'], self._notify_app_of_changes)
+        self.watcher = DictWatch(self.zk, self.app.config['zookeeper']['path'], self._notify_app_of_changes)
 
     def _notify_app_of_changes(self, state, key, from_val, to_val):
         app = self.app
