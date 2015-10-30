@@ -9,7 +9,7 @@ import boto.ec2
 import boto.utils
 import psycopg2
 
-from subprocess import check_call, check_output
+from subprocess import call, check_call, check_output
 
 from .utils import pg_lsn_to_int, backoff_wait
 from .plugin import subscribe
