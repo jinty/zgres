@@ -70,7 +70,7 @@ class SelectFurthestAheadReplica:
             if state.get('health_problems', True):
                 # if missing, something is wrong, should be an empty dict
                 continue
-            if not state.get('replica', False):
+            if state.get('replication_role', None) != 'replica':
                 continue
             if state.get('pg_last_xlog_replay_location', None) is None:
                 # we also need to know the replay location
