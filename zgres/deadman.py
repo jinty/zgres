@@ -176,6 +176,8 @@ class App:
 
     def follow(self, primary_conninfo): 
         # Change who we are replicating from
+        logging.info('Now replicating from {}'.format(primary_conninfo))
+        assert self._plugins.pg_replication_role() != 'master'
         self._plugins.pg_setup_replication(primary_conninfo=primary_conninfo)
         self._plugins.pg_reload()
 

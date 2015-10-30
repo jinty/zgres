@@ -29,6 +29,8 @@ class FollowTheLeader:
     def _check_following(self):
         if self._current_master == self._am_following:
             return
+        if self._current_master == self.app.my_id:
+            return # I am the master, don't follow anyone!
         if self._current_conn_info is not None and self._current_master in self._current_conn_info:
             master_info = self._current_conn_info.get(self._current_master)
             self.app.follow(dict(
