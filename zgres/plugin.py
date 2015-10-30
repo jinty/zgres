@@ -60,7 +60,7 @@ def _handlers_executor_single(handlers, event_name):
     handler = handlers[0][2]
     def call(self, *args, **kw):
         result = handler(*args, **kw)
-        logging.info('event {} called with {}, returning {}'.format(event_name, (args, kw), result))
+        logging.debug('event {} called with {}, returning {}'.format(event_name, (args, kw), result))
         return result
     return call
 
