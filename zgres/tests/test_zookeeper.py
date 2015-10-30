@@ -19,13 +19,14 @@ class MyFakeClient(FakeClient):
 @pytest.mark.asyncio
 async def test_functional():
     """Test as much of the whole stack as we can."""
-    config = {'sync': {
-        'plugins': 'zgres#zgres-apply\nzgres#zookeeper',
-        'zookeeper': {
-            'connection_string': 'example.org:2181',
-            'path': '/databases',
+    config = {
+            'sync': {
+                'plugins': 'zgres#zgres-apply\nzgres#zookeeper'},
+            'zookeeper': {
+                'connection_string': 'example.org:2181',
+                'path': '/databases',
+                }
             }
-        }}
     zk = MyFakeClient()
     zk.start()
     zk.create("/databases")
