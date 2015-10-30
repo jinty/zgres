@@ -120,12 +120,24 @@ def _apply(_prefix=_DEFAULT_PREFIX):
 class Plugin:
 
     def __init__(self, name, app):
-        pass
+        self._state = {
+                'masters': {},
+                'conn_info': {}
+                }
+
+    @subscribe
+    def masters(self, state):
+        self._state['masters'] = state
+        self._write()
 
     @subscribe
     def conn_info(self, state):
+        self._state['conn_info'] = state
+        self._write()
+
+    def _write(self):
         with open('/var/lib/zgres/config/databases.json.tmp', 'w') as f:
-            f.write(json.dumps(state, sort_keys=True))
+            f.write(json.dumps(self._state, sort_keys=True))
         os.rename('/var/lib/zgres/config/databases.json.tmp', '/var/lib/zgres/config/databases.json')
         check_call('zgres-apply') # apply the configuration to the machine
 

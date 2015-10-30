@@ -96,7 +96,7 @@ class DictWatch(Mapping):
 
     MISSING = object()
 
-    def __init__(self, zk, path, callback, prefix=None):
+    def __init__(self, zk, path, callback, prefix=None, deserializer=None):
         self._zk = zk
         self._callback = callback
         self._state = {}
@@ -108,6 +108,8 @@ class DictWatch(Mapping):
         self._zk_event_queue = queue.Queue()
         self._prefix = prefix
         self._watch()
+        if deserializer is not None:
+            self._deserialize = deserializer
 
     def _watch(self):
         """Start watching."""
@@ -183,7 +185,7 @@ class ZooKeeperSource:
             self._path_prefix += '/'
 
     @subscribe
-    def start_watching(self, state=None, conn_info=None):
+    def start_watching(self, state=None, conn_info=None, masters=None):
         self.zk = KazooClient(hosts=self.app.config['zookeeper']['connection_string'])
         self.zk.start()
         if state is not None:
@@ -196,6 +198,21 @@ class ZooKeeperSource:
                     self.zk,
                     self._path_prefix + 'conn',
                     partial(self._notify, conn_info))
+        if masters is not None:
+            self._masters_watcher = DictWatch(
+                    self.zk,
+                    self._path_prefix + 'lock',
+                    partial(self._notify_masters, masters),
+                    deserializer=lambda data: data.decode('utf-8'))
+
+    def _notify_masters(self, callback, state, key, from_val, to_val):
+        c_state = _get_clusters(state)
+        new_state = {}
+        for k, v in c_state.items():
+            master = v.get('master', None)
+            if master is not None:
+                new_state[k] = master
+        callback(new_state)
 
     def _notify(self, callback, state, key, from_val, to_val):
         callback(_get_clusters(state))
