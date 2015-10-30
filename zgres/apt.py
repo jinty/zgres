@@ -23,6 +23,16 @@ def _pg_controldata_value(pg_version, data_dir, key):
             return value.strip()
     raise ValueError('could not find value for "{}"'.format(key))
 
+def _backoff_wait(condition, initial_wait, message=None, times=300):
+    for i in range(1, times + 1):
+        time.sleep(initial_wait * i)
+        if condition():
+            break
+        if message is not None:
+            logging.info(message)
+    else:
+        raise Exception('Timed Out: {}'.format(message))
+
 class _NoCluster(Exception):
     pass
 
@@ -185,10 +195,27 @@ class AptPostgresqlPlugin:
             return int(val)
         return int(val)
 
+    def _pg_accepts_connections(self):
+        try:
+            conn = self._conn()
+            try:
+                cur = conn.cursor()
+                cur.execute('SELECT 1')
+                cur.fetchall()
+                return True
+            finally:
+                conn.close()
+        except psycopg2.OperationalError as e:
+            return False
+
+    def _wait_for_connections(self):
+        _backoff_wait(self._pg_accepts_connections, 0.1, times=300, message='Waiting for postgresql to accept connections')
+
     @subscribe
     def pg_start(self):
         # TODO: implement pg_hba.conf reconfig to allow cluster nodes to join the cluster automatically
         check_call(['systemctl', 'start', self._service()])
+        self._wait_for_connections()
         if not self._is_active():
             raise Exception('Failed to start postgresql')
 
