@@ -260,7 +260,7 @@ def test_replication_role(plugin, cluster):
     assert plugin.pg_replication_role() == None
     # if we initdb, we get a master
     plugin.pg_initdb()
-    assert plugin.pg_replication_ro_le() == 'master'
+    assert plugin.pg_replication_role() == 'master'
     # even if the master is running
     plugin.pg_start()
     assert plugin.pg_replication_role() == 'master'

@@ -206,7 +206,8 @@ class AptPostgresqlPlugin:
         try:
             check_call(['pg_dropcluster', '--stop', self._version, self._cluster_name])
         except:
-            check_call(['rm', '-rf', self._data_dir(), self._config_dir])
+            if os.path.exists(self._config_file()):
+                check_call(['rm', '-rf', self._data_dir(), self._config_dir])
 
     @subscribe
     def pg_initdb(self):
