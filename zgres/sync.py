@@ -61,6 +61,6 @@ replication.
 """)
     config = zgres.config.parse_args(parser, argv)
     # Keep a reference to the App to prevent garbage collection
-    app = App(config)
+    app = SyncApp(config)
     utils.run_asyncio()
     sys.exit(0)
