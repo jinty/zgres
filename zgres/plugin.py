@@ -49,7 +49,7 @@ def _handlers_executor(handlers, event_name):
         return None
     def call(self, *args, **kw):
         result = [(name, h(*args, **kw)) for name, _, h in handlers]
-        logging.info('event {} called with {}, returning {}'.format(event_name, (args, kw), result))
+        logging.debug('event {} called with {}, returning {}'.format(event_name, (args, kw), result))
         return result
     return call
 
