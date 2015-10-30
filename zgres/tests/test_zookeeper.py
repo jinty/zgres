@@ -18,11 +18,7 @@ class MyFakeClient(FakeClient):
 
 @pytest.mark.asyncio
 async def test_functional():
-    """Test as much of the whole stack as we can.
-    
-    got a nasty sleep(0.1) in it. there should only BE ONE of these tests! the
-    others should be real unit tests.
-    """
+    """Test as much of the whole stack as we can."""
     config = {'sync': {
         'plugins': 'zgres#zgres-apply\nzgres#zookeeper',
         'zookeeper': {
@@ -35,12 +31,17 @@ async def test_functional():
     zk.create("/databases")
     zk.create("/databases/clusterA_conn_10.0.0.2", json.dumps({"node": 1}).encode('utf-8'))
     zk.stop()
+    next_call = asyncio.Event()
     with mock.patch('zgres.apply.Plugin.conn_info') as conn_info:
+        conn_info.side_effect = lambda info: next_call.set()
         with mock.patch('zgres.zookeeper.KazooClient') as KazooClient:
             KazooClient.return_value = zk
             app = sync.SyncApp(config)
+    await next_call.wait()
+    next_call.clear()
     zk.create("/databases/clusterA_conn_10.0.0.1", json.dumps({"node": 1}).encode('utf-8'))
-    await asyncio.sleep(0.25)
+    await next_call.wait()
+    next_call.clear()
     # did our state get updated?
     assert dict(app._plugins.plugins['zgres#zookeeper'].watcher) == {
             'clusterA_conn_10.0.0.1': {'node': 1},
