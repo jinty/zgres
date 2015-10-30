@@ -136,9 +136,13 @@ def test_timeline(plugin, cluster):
     assert plugin.pg_get_timeline() == None
     plugin.pg_initdb()
     assert plugin.pg_get_timeline() == 1
+    plugin.pg_setup_replication()
     plugin.pg_start()
     assert plugin.pg_get_timeline() == 1
+    plugin.pg_stop_replication()
+    assert plugin.pg_get_timeline() == 2
     plugin.pg_stop()
+    assert plugin.pg_get_timeline() == 2
     check_call(['pg_dropcluster'] + list(cluster))
 
 @needs_root
@@ -232,27 +236,42 @@ def test_pg_ident(plugin, cluster):
     check_call(['pg_dropcluster'] + list(cluster))
 
 @needs_root
-def test_setup_replication(plugin, cluster):
+def test_setup_replication_restore_command(plugin, cluster):
     plugin.pg_initdb()
-    plugin.pg_setup_replication()
-    assert plugin.pg_am_i_replica()
-    plugin.pg_start()
-    plugin.pg_setup_replication(primary_conninfo=dict(host='127.0.0.1', port=5555))
-    plugin.pg_reload()
     plugin.app.config['apt']['restore_command'] = 'fail'
     plugin.pg_setup_replication()
-    plugin.pg_reload()
-    assert plugin.pg_am_i_replica()
-    plugin.pg_stop_replication()
-    for i in range(15):
-        time.sleep(1)
-        if not plugin.pg_am_i_replica():
-            break
-    else:
-        print_log(cluster)
-        assert False, 'cluster failed to come out of replication'
-    assert not plugin.pg_am_i_replica()
-    assert plugin.pg_get_timeline() == 2
+    plugin.pg_start()
+
+@needs_root
+def test_setup_replication_with_conn_info(plugin, cluster):
+    plugin.pg_initdb()
+    plugin.pg_setup_replication(primary_conninfo=dict(host='127.0.0.1', port=5555))
+    plugin.pg_start()
+
+@needs_root
+def test_reset_idempotent(plugin, cluster):
+    plugin.pg_initdb()
+    plugin.pg_reset()
+    plugin.pg_reset()
+
+@needs_root
+def test_replication_role(plugin, cluster):
+    # if we have no cluster setup, return None
+    assert plugin.pg_replication_role() == None
+    # if we initdb, we get a master
+    plugin.pg_initdb()
+    assert plugin.pg_replication_ro_le() == 'master'
+    # even if the master is running
+    plugin.pg_start()
+    assert plugin.pg_replication_role() == 'master'
     plugin.pg_stop()
-    assert plugin.pg_get_timeline() == 2
-    check_call(['pg_dropcluster'] + list(cluster))
+    # setup replication and we get a replica
+    plugin.pg_setup_replication()
+    assert plugin.pg_replication_role() == 'replica'
+    plugin.pg_start()
+    assert plugin.pg_replication_role() == 'replica'
+    # stopping replication brings us back to master
+    plugin.pg_stop_replication()
+    assert plugin.pg_replication_role() == 'master'
+    plugin.pg_reset()
+    assert plugin.pg_replication_role() == 'master'

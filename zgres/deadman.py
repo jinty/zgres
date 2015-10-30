@@ -134,7 +134,7 @@ _PLUGIN_API = [
         dict(name='pg_restore',
             required=True,
             type='multiple'),
-        dict(name='pg_am_i_replica',
+        dict(name='pg_replication_role', # returns one of: None, 'master', 'replica'
             required=True,
             type='single'),
 
@@ -191,7 +191,7 @@ class App:
             raise
         self._plugins.pg_setup_replication()
         my_database_id = self._plugins.pg_get_database_identifier()
-        if not self._plugins.pg_am_i_replica() or my_database_id != self.database_identifier:
+        if self._plugins.pg_replication_role() != 'replica' or my_database_id != self.database_identifier:
             # destroy our current cluster
             self._plugins.pg_reset()
             logging.error("Something is seriously wrong: after restoring postgresql was NOT setup as a replica.")
@@ -242,11 +242,13 @@ class App:
         if my_database_id != self.database_identifier:
             self.logger.info('My database identifer is different ({}), bootstrapping as replica'.format(my_database_id))
             return self.replica_bootstrap()
-        am_replica = self._plugins.pg_am_i_replica()
-        self.update_state(replica=am_replica)
-        if am_replica:
+        replication_role = self._plugins.pg_replication_role()
+        self.update_state(replication_role=replication_role)
+        if replication_role is None:
+            raise AssertionError('I should have a replication role already')
+        elif replication_role == 'replica':
             self.logger.info('I am a replica, registering myself as such')
-        else:
+        elif replication_role == 'master':
             self.logger.info('I am NOT a replica, trying to take over as master')
             if self._plugins.dcs_lock('master'):
                 self.logger.info('Got master lock, proceedint with startup')
@@ -274,7 +276,7 @@ class App:
         self._get_conn_info_from_plugins()
         self.healthy('zgres.initialize')
         if self.health_problems:
-            if not am_replica:
+            if replication_role == 'master':
                 # I am an unhealthy master with the lock,
                 # This is a wierd situation becase another master should have taken over before
                 # we restarted and got the lock. let's check in a little while if we become healthy,
@@ -324,12 +326,15 @@ class App:
         self._master_lock_owner = owner
         if owner == self.my_id:
             # I have the master lock, if I am replicating, stop.
-            if self._plugins.pg_am_i_replica():
+            if self._plugins.pg_replication_role() == 'replica':
                 self._plugins.pg_stop_replication()
+                new_role = self._plugins.pg_replication_role()
+                if new_role != 'master':
+                    raise Exception('I should have become a master already!')
                 self._update_timeline()
-                self.update_state(replica=False)
+                self.update_state(replication_role=new_role)
         else:
-            if not self._plugins.pg_am_i_replica():
+            if self._plugins.pg_replication_role() == 'master':
                 # if I am master, but I am not replicating, shut down
                 self.restart(10)
             if owner is None:
@@ -383,7 +388,7 @@ class App:
         if 'zgres.initialize' in self.health_problems:
             return
         logging.warn('I am unhelthy: ({}) {}'.format(key, reason))
-        if self._plugins.pg_am_i_replica():
+        if self._plugins.pg_replication_role() == 'replica':
             if not can_be_replica:
                 self._plugins.dcs_delete_conn_info()
         else:
@@ -413,7 +418,7 @@ class App:
             logging.warn('I am still unhelthy for these reasons: {}'.format(self.health_problems))
         else:
             # YAY, we're healthy again
-            if not self._plugins.pg_am_i_replica():
+            if self._plugins.pg_replication_role() == 'master':
                 locked = self._plugins.dcs_lock('master')
                 if not locked:
                     # for some reason we cannot lock the master, restart and try again
@@ -433,7 +438,7 @@ class App:
         app.restart(timeout)
 
     def restart(self, timeout):
-        if not self._plugins.pg_am_i_replica():
+        if self._plugins.pg_replication_role() == 'master':
             # If we are master, we must stop postgresql to avoid a split brain
             self._plugins.pg_stop()
         self._plugins.dcs_disconnect()

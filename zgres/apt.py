@@ -235,8 +235,8 @@ class AptPostgresqlPlugin:
         return dict(port=self._port())
 
     @subscribe
-    def pg_am_i_replica(self):
-        return os.path.exists(os.path.join(self._data_dir(), 'recovery.conf'))
+    def pg_replication_role(self):
+        return os.path.exists(os.path.join(self._data_dir(), 'recovery.conf')) and 'replica' or 'master'
 
     @subscribe
     def start_monitoring(self):
