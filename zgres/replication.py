@@ -40,12 +40,8 @@ def wal_sort_key(state):
     wal_replay_position = state.get('pg_last_xlog_replay_location', None)
     if wal_replay_position is None:
         wal_replay_position = '0/0'
-    wal_replay_position = -utils.pg_lsn_to_int(wal_replay_position)
-    wal_recieve_position = state.get('pg_last_xlog_receive_location', None)
-    if wal_recieve_position is None:
-        wal_recieve_position = '0/0'
-    wal_recieve_position = -utils.pg_lsn_to_int(wal_recieve_position)
-    return (-wal_recieve_position, -wal_replay_position)
+    wal_replay_position = utils.pg_lsn_to_int(wal_replay_position)
+    return wal_replay_position
 
 class SelectFurthestAheadReplica:
 
@@ -56,7 +52,7 @@ class SelectFurthestAheadReplica:
     @subscribe
     def best_replicas(self, states):
         nodes = [(wal_sort_key(state), id, state) for id, state in states]
-        nodes.sort()
+        nodes.sort(reverse=True)
         best_key = None
         for sort_key, id, state in nodes:
             if best_key is None:
@@ -76,8 +72,7 @@ class SelectFurthestAheadReplica:
                 continue
             if not state.get('replica', False):
                 continue
-            if state.get('pg_last_xlog_receive_location', None) is None \
-                    or state.get('pg_last_xlog_replay_location', None) is None:
+            if state.get('pg_last_xlog_replay_location', None) is None:
                 # we also need to know the replay location
                 continue
             yield id, state
@@ -91,22 +86,21 @@ class SelectFurthestAheadReplica:
         conn = psycopg2.connect(**conn_args)
         try:
             cur = conn.cursor()
-            cur.execute("SELECT pg_last_xlog_replay_location(), pg_last_xlog_receive_location()")
+            cur.execute("SELECT pg_last_xlog_replay_location();")
             results = cur.fetchall()[0]
         finally:
             conn.rollback()
             conn.close()
-        return results
+        return results[0]
 
     async def _set_replication_status(self):
         while True:
             await asyncio.sleep(1)
             args = self.app.pg_connect_info()
             try:
-                results = self._get_location(args)
+                result = self._get_location(args)
             except psycopg2.OperationalError as e:
                 logging.warn('Could not get wal location from postgresql: {}'.format(e))
-                results = (None, None)
+                result = None
             self.app.update_state(
-                    pg_last_xlog_replay_location=results[0],
-                    pg_last_xlog_receive_location=results[1])
+                    pg_last_xlog_replay_location=result)
