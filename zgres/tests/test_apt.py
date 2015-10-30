@@ -248,7 +248,7 @@ def test_setup_replication_restore_command(plugin, cluster):
     plugin.pg_initdb()
     plugin.pg_start()
     plugin.pg_stop()
-    plugin.app.config['apt']['restore_command'] = 'fail'
+    plugin.app.config['apt']['restore_command'] = 'false'
     plugin.pg_setup_replication()
     plugin.pg_start()
 
