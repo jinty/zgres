@@ -9,7 +9,7 @@ from subprocess import check_output, call, check_call
 import psycopg2
 import psycopg2.errorcodes
 
-from . import systemd
+from . import systemd, utils
 from .plugin import subscribe
 
 def _pg_controldata_value(pg_version, data_dir, key):
@@ -22,16 +22,6 @@ def _pg_controldata_value(pg_version, data_dir, key):
         if k == key:
             return value.strip()
     raise ValueError('could not find value for "{}"'.format(key))
-
-def _backoff_wait(condition, initial_wait, message=None, times=300):
-    for i in range(1, times + 1):
-        time.sleep(initial_wait * i)
-        if condition():
-            break
-        if message is not None:
-            logging.info(message)
-    else:
-        raise Exception('Timed Out: {}'.format(message))
 
 class _NoCluster(Exception):
     pass
@@ -202,7 +192,7 @@ class AptPostgresqlPlugin:
         return True
 
     def _wait_for_connections(self):
-        _backoff_wait(self._pg_accepts_connections, 0.1, times=300, message='Waiting for postgresql to accept connections')
+        utils.backoff_wait(self._pg_accepts_connections, 0.1, times=300, message='Waiting for postgresql to accept connections')
 
     @subscribe
     def pg_start(self):

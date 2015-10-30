@@ -30,3 +30,20 @@ def run_asyncio(*callback_and_args):
     loop.run_forever()
     logging.info('Exiting after being asked to stop nicely')
     return 0
+
+def backoff_wait(condition, initial_wait=1, message=None, times=300, max_wait=None):
+    assert times is not None or max_wait is not None
+    if condition():
+        return
+    count = 1
+    while times is None or times > count:
+        wait = initial_wait * count
+        if max_wait is not None:
+            wait = min(max_wait, wait)
+        time.sleep(wait)
+        if condition():
+            break
+        if message is not None:
+            logging.info(message)
+    else:
+        raise Exception('Timed Out: {}'.format(message))

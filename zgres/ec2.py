@@ -11,7 +11,7 @@ import psycopg2
 
 from subprocess import check_call, check_output
 
-from .utils import pg_lsn_to_int
+from .utils import pg_lsn_to_int, backoff_wait
 from .plugin import subscribe
 
 class Ec2Plugin:
@@ -37,26 +37,26 @@ class Ec2Plugin:
                 }
 
 def _wait_for_volume_available(vol):
-    time.sleep(5)
-    while True:
-        # we wait forever, otherwise we could get an EXPENSIVE runaway that creates MANY LARGE volumes
+    def condition():
         vol.update()
         status = vol.status
-        if status == 'available':
-            break
-        time.sleep(5)
-        logging.warn('Waiting for volume to be available: {} ({})'.format(vol.id, status))
+        return status == 'available'
+    backoff_wait(
+            condition,
+            message='Waiting for volume to be available: {}'.format(vol.id),
+            times=None,
+            max_wait=60)
 
 def _wait_for_volume_attached(vol):
-    time.sleep(5)
-    while True:
-        # we wait forever, otherwise we could get an EXPENSIVE runaway that creates MANY LARGE volumes
+    def condition():
         vol.update()
         attach_state = vol.attachment_state()
-        if vol.status == 'in-use' and attach_state == 'attached':
-            break
-        time.sleep(5)
-        logging.warn('Waiting for volume to be attach: {} ({})'.format(vol.id, vol.status, attach_state))
+        return vol.status == 'in-use' and attach_state == 'attached'
+    backoff_wait(
+            condition,
+            message='Waiting for volume to be attached: {}'.format(vol.id),
+            times=None,
+            max_wait=60)
 
 class Ec2SnapshotBackupPlugin:
 
@@ -114,12 +114,14 @@ class Ec2SnapshotBackupPlugin:
                     'zgres:db_id': self.app.database_identifier,
                     'zgres:wal_position': position,
                     'zgres:device': d})
-                count = 0
-                while snapshot.status not in ('completed', 'error') and count < 720:
-                    count += 1
-                    time.sleep(10)
+                def complete():
                     snapshot.update()
-                    logging.info('Waiting for snapshot {} to complete'.format(snapshot.id))
+                    return snapshot.status in ('completed', 'error')
+                backoff_wait(
+                        complete,
+                        message='Waiting for snapshot {} to complete'.format(snapshot.id),
+                        times=None,
+                        max_wait=120)
                 if snapshot.state != 'completed':
                     raise Exception('Snapshot did not complete: {}'.format(snapshot.state))
         finally:
@@ -208,12 +210,9 @@ class Ec2SnapshotBackupPlugin:
             _wait_for_volume_attached(vol)
         logging.info('Mounting everything')
         # finally, actually mount them all
-        for i in range(60):
-            # systemd may already have mounted it, let's be sure it worked before continuing
-            try:
-                check_call(['mount', '--all'])
-            except Exception:
-                time.sleep(5)
-            break
-        else:
-            check_call(['mount', '--all'])
+        def is_mounted():
+            return not check_call(['mount', '--all'])
+        backoff_wait(
+            is_mounted,
+            message='Waiting to mount all drives in fstab',
+            times=30)
