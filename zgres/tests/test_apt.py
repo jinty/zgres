@@ -155,7 +155,7 @@ def test_timeline(plugin, cluster):
 
 @needs_root
 def test_database_identifier_with_no_cluster_setup(plugin):
-    # NOTE: this test may fail if others do not cleanup properly
+    plugin.pg_reset()
     assert plugin.pg_get_database_identifier() == None
 
 @needs_root
@@ -246,6 +246,8 @@ def test_pg_ident(plugin, cluster):
 @needs_root
 def test_setup_replication_restore_command(plugin, cluster):
     plugin.pg_initdb()
+    plugin.pg_start()
+    plugin.pg_stop()
     plugin.app.config['apt']['restore_command'] = 'fail'
     plugin.pg_setup_replication()
     plugin.pg_start()
@@ -253,6 +255,8 @@ def test_setup_replication_restore_command(plugin, cluster):
 @needs_root
 def test_setup_replication_with_conn_info(plugin, cluster):
     plugin.pg_initdb()
+    plugin.pg_start()
+    plugin.pg_stop()
     plugin.pg_setup_replication(primary_conninfo=dict(host='127.0.0.1', port=5555))
     plugin.pg_start()
 
