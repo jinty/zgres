@@ -137,15 +137,21 @@ def test_timeline(plugin, cluster):
     # new db allways start in timeline 1
     assert plugin.pg_get_timeline() == None
     plugin.pg_initdb()
+    # tst as master
     assert plugin.pg_get_timeline() == 1
+    plugin.pg_start()
+    assert plugin.pg_get_timeline() == 1
+    plugin.pg_stop()
+    # now test again as slave
     plugin.pg_setup_replication()
+    assert plugin.pg_get_timeline() == 1
     plugin.pg_start()
     assert plugin.pg_get_timeline() == 1
     plugin.pg_stop_replication()
     assert plugin.pg_get_timeline() == 2
     plugin.pg_stop()
     assert plugin.pg_get_timeline() == 2
-    check_call(['pg_dropcluster'] + list(cluster))
+    plugin.pg_reset()
 
 @needs_root
 def test_database_identifier_with_no_cluster_setup(plugin):
