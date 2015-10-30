@@ -196,17 +196,10 @@ class AptPostgresqlPlugin:
         return int(val)
 
     def _pg_accepts_connections(self):
-        try:
-            conn = self._conn()
-            try:
-                cur = conn.cursor()
-                cur.execute('SELECT 1')
-                cur.fetchall()
-                return True
-            finally:
-                conn.close()
-        except psycopg2.OperationalError as e:
+        retval = call(['sudo', '-u', 'postgres', 'psql', '-h', self._socket_dir(), '-p', self._port(), '-c', 'SELECT 1'])
+        if retval:
             return False
+        return True
 
     def _wait_for_connections(self):
         _backoff_wait(self._pg_accepts_connections, 0.1, times=300, message='Waiting for postgresql to accept connections')
