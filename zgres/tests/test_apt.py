@@ -286,4 +286,4 @@ def test_replication_role(plugin, cluster):
     plugin.pg_stop_replication()
     assert plugin.pg_replication_role() == 'master'
     plugin.pg_reset()
-    assert plugin.pg_replication_role() == 'master'
+    assert plugin.pg_replication_role() == None
