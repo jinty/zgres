@@ -15,7 +15,7 @@ def show_cli(argv=sys.argv):
         plugins.initialize()
         print('My State:')
         print('    ID: {}'.format(plugins.get_my_id()))
-        print('    is replica: {}'.format(plugins.pg_replication_state()))
+        print('    role: {}'.format(plugins.pg_replication_role()))
         print('Cluster:')
         print('    current master: {}'.format(plugins.dcs_get_lock_owner('master')))
         print('    database identifier: {}'.format(plugins.dcs_get_database_identifier()))
