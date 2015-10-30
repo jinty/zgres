@@ -291,7 +291,7 @@ class AptPostgresqlPlugin:
 
     @subscribe
     def pg_stop_replication(self):
-        assert self.pg_am_i_replica()
+        assert self.pg_replication_role() == 'replica'
         trigger_file = self._trigger_file()
         with open(trigger_file, 'w') as f:
             f.write('touched')
