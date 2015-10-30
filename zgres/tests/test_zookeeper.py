@@ -29,6 +29,7 @@ async def test_functional(deadman_plugin):
             }
     deadmanA = deadman_plugin('A')
     deadmanB = deadman_plugin('B')
+    deadmanA.dcs_set_database_identifier('1234')
     deadmanA.dcs_set_conn_info(dict(answer=42))
     deadmanA.dcs_lock('master')
     deadmanB.dcs_set_state(dict(mystate='lamentable'))
@@ -38,11 +39,12 @@ async def test_functional(deadman_plugin):
         ev.clear()
     def set_ev(*args, **kw):
         ev.set()
-    for i in range(6):
-        asyncio.get_event_loop().call_later(i+3, set_ev)
+    for i in range(10):
+        asyncio.get_event_loop().call_later(4 + 0.1 * i, set_ev)
     from . import MockSyncPlugin as RealMockSyncPlugin
     with mock.patch('zgres.tests.MockSyncPlugin') as MockSyncPlugin:
         p = RealMockSyncPlugin('', '')
+        p.databases.side_effect = set_ev
         p.state.side_effect = set_ev
         p.masters.side_effect = set_ev
         p.conn_info.side_effect = set_ev
@@ -67,6 +69,7 @@ async def test_functional(deadman_plugin):
             'mygroup-B': {'mystate': 'lamentable'}
             }
     assert dict(app._plugins.plugins['zgres#zookeeper']._masters_watcher) == {}
+    assert dict(app._plugins.plugins['zgres#zookeeper']._databases_watcher) == {'mygroup-database_identifier': '1234'}
     # the plugin was called twice, once with the original data, and once with new data
     p.conn_info.assert_has_calls(
             [mock.call({'mygroup': {'A': {'answer': 42}}}),
@@ -80,6 +83,7 @@ async def test_functional(deadman_plugin):
             [mock.call({'mygroup': 'A'}),
                 mock.call({})]
             )
+    p.databases.assert_has_calls([mock.call(['mygroup'])])
 
 @pytest.fixture
 def deadman_plugin(request):

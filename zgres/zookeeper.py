@@ -185,7 +185,7 @@ class ZooKeeperSource:
             self._path_prefix += '/'
 
     @subscribe
-    def start_watching(self, state=None, conn_info=None, masters=None):
+    def start_watching(self, state=None, conn_info=None, masters=None, databases=None):
         self.zk = KazooClient(hosts=self.app.config['zookeeper']['connection_string'])
         self.zk.start()
         if state is not None:
@@ -204,6 +204,21 @@ class ZooKeeperSource:
                     self._path_prefix + 'lock',
                     partial(self._notify_masters, masters),
                     deserializer=lambda data: data.decode('utf-8'))
+        if databases is not None:
+            self._databases_watcher = DictWatch(
+                    self.zk,
+                    self._path_prefix + 'static',
+                    partial(self._notify_databases, databases),
+                    deserializer=lambda data: data.decode('utf-8'))
+
+    def _notify_databases(self, callback, state, key, from_val, to_val):
+        c_state = _get_clusters(state)
+        new_state = []
+        for k, v in c_state.items():
+            database_identifier = v.get('database_identifier', None)
+            if database_identifier is not None:
+                new_state.append(k)
+        callback(new_state)
 
     def _notify_masters(self, callback, state, key, from_val, to_val):
         c_state = _get_clusters(state)

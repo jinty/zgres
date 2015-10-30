@@ -59,8 +59,9 @@ def deadman_app():
     return factory
 
 def MockSyncPlugin(name, app):
-    p = mock.Mock(spec=['state', 'conn_info', 'masters'])
+    p = mock.Mock(spec=['state', 'conn_info', 'masters', 'databases'])
     p.return_value = None
+    p.databases = plugin.subscribe(p.databases)
     p.state = plugin.subscribe(p.state)
     p.conn_info = plugin.subscribe(p.conn_info)
     p.masters = plugin.subscribe(p.masters)

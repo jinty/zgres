@@ -121,9 +121,15 @@ class Plugin:
 
     def __init__(self, name, app):
         self._state = {
+                'databases': [],
                 'masters': {},
                 'conn_info': {}
                 }
+
+    @subscribe
+    def databases(self, state):
+        self._state['databases'] = state
+        self._write()
 
     @subscribe
     def masters(self, state):

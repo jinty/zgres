@@ -31,6 +31,7 @@ class SyncApp:
                 'sync',
                 ['state',
                     'conn_info',
+                    'databases',
                     'masters',
                     dict(name='start_watching', required=True, type='single')],
                 self)
@@ -39,7 +40,9 @@ class SyncApp:
         self._plugins.start_watching(
                 state=self._plugins.state,
                 conn_info=self._plugins.conn_info,
-                masters=self._plugins.masters) # start watching for cluster events.
+                masters=self._plugins.masters,
+                databases=self._plugins.databases,
+                ) # start watching for cluster events.
 
 #
 # Command Line Scripts
