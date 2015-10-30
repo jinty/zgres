@@ -273,8 +273,6 @@ class AptPostgresqlPlugin:
     @subscribe
     def pg_stop_replication(self):
         assert self.pg_am_i_replica()
-        if self._set_config_values('master.'):
-            self.pg_reload()
         trigger_file = self._trigger_file()
         with open(trigger_file, 'w') as f:
             f.write('touched')
@@ -292,6 +290,8 @@ class AptPostgresqlPlugin:
         else:
             # hmm, what to do here?
             raise Exception('postgresql did not come out of recovery mode')
+        if self._set_config_values('master.'):
+            self.pg_reload()
 
     @subscribe
     def pg_setup_replication(self, primary_conninfo=None):
