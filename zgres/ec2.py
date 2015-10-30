@@ -211,7 +211,7 @@ class Ec2SnapshotBackupPlugin:
         logging.info('Mounting everything')
         # finally, actually mount them all
         def is_mounted():
-            return not check_call(['mount', '--all'])
+            return not call(['mount', '--all'])
         backoff_wait(
             is_mounted,
             message='Waiting to mount all drives in fstab',
