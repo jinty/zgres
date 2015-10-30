@@ -13,6 +13,8 @@ from . import systemd, utils
 from .plugin import subscribe
 
 def _pg_controldata_value(pg_version, data_dir, key):
+    if not os.path.exists(os.path.join(data_dir, 'global', 'pg_control')):
+        return None # cluster corrupt?
     data = check_output([
         '/usr/lib/postgresql/{}/bin/pg_controldata'.format(pg_version),
         data_dir])
