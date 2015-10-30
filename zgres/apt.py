@@ -89,6 +89,9 @@ class AptPostgresqlPlugin:
 
     def _data_dir(self):
         return self._get_conf_value('data_directory')
+    
+    def _default_data_dir(self):
+        return '/var/lib/postgresql/{}/{}/'.format(self._version, self._cluster_name)
 
     def _service(self):
         return 'postgresql@{}-{}.service'.format(self._version, self._cluster_name)
@@ -227,6 +230,8 @@ class AptPostgresqlPlugin:
         if os.path.exists(self._config_file()):
             self.pg_stop()
             check_call(['pg_dropcluster', '--stop', self._version, self._cluster_name])
+        if os.path.exists(self._default_data_dir()):
+            check_call(['rm', '-rf', self._default_data_dir()])
         create_args = ['pg_createcluster', self._version, self._cluster_name]
         initdb_options = self.app.config['apt'].get('initdb_options', '').strip()
         if initdb_options:
