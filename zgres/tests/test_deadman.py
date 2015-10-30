@@ -326,6 +326,7 @@ def test_plugin_tells_app_to_follow_new_leader(app):
     plugins.reset_mock()
     app.follow(primary_conninfo=dict(host='127.0.0.9', port=5432))
     assert plugins.mock_calls == [
+            call.pg_replication_role(),
             call.pg_setup_replication(primary_conninfo={'port': 5432, 'host': '127.0.0.9'}),
             call.pg_reload()]
 
