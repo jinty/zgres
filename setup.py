@@ -17,6 +17,7 @@ setup(name="zgres",
           'zgres.sync': [
               'zgres-apply = zgres.apply:Plugin',
               'zookeeper = zgres.zookeeper:ZooKeeperSource',
+              'mock-subscriber = zgres.tests:MockSyncPlugin', # only for tests
               ],
           'zgres.deadman': [
               'apt = zgres.apt:AptPostgresqlPlugin',

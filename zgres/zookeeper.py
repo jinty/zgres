@@ -178,26 +178,28 @@ class ZooKeeperSource:
 
     def __init__(self, name, app):
         self.app = app
+        self._path_prefix = self.app.config['zookeeper']['path'].strip()
+        if not self._path_prefix.endswith('/'):
+            self._path_prefix += '/'
 
     @subscribe
     def start_watching(self):
         self.zk = KazooClient(hosts=self.app.config['zookeeper']['connection_string'])
         self.zk.start()
-        self.watcher = DictWatch(self.zk, self.app.config['zookeeper']['path'], self._notify_app_of_changes)
+        if self.app.state is not None:
+            self._state_watcher = DictWatch(self.zk, self._path_prefix + 'state', self._notify_state)
+        if self.app.conn_info is not None:
+            self._conn_watcher = DictWatch(self.zk, self._path_prefix + 'conn', self._notify_conn_info)
 
-    def _notify_app_of_changes(self, state, key, from_val, to_val):
+    def _notify_state(self, state, key, from_val, to_val):
         app = self.app
-        if app.state is not None:
-            databases_with_state = state_to_databases(state, True)
-            app.state(databases_with_state)
-        if app.conn_info is not None:
-            connection_info = state_to_databases(state, False)
-            if self._old_connection_info == connection_info:
-                # Optimization: if the connection_info has not changed since the last event,
-                # don't call our app again
-                return
-            app.conn_info(connection_info)
-            self._old_connection_info = connection_info
+        databases_with_state = _get_clusters(state)
+        app.state(databases_with_state)
+
+    def _notify_conn_info(self, conn_info, key, from_val, to_val):
+        app = self.app
+        databases_with_conn_info = _get_clusters(conn_info)
+        app.conn_info(databases_with_conn_info)
 
 def _get_clusters(in_dict):
     out_dict = {}

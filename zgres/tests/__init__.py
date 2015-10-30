@@ -4,6 +4,8 @@ from unittest import mock
 
 import pytest
 
+from .. import plugin
+
 class FakeSleeper:
 
     def __init__(self, max_loops=20):
@@ -55,3 +57,10 @@ def deadman_app():
         plugins = app._plugins
         return app
     return factory
+
+def MockSyncPlugin(name, app):
+    p = mock.Mock(spec=['state', 'conn_info'])
+    p.return_value = None
+    p.state = plugin.subscribe(p.state)
+    p.conn_info = plugin.subscribe(p.conn_info)
+    return p

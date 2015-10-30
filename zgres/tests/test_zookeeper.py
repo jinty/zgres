@@ -17,41 +17,57 @@ class MyFakeClient(FakeClient):
         return (self.session_id, 'abc')
 
 @pytest.mark.asyncio
-async def test_functional():
-    """Test as much of the whole stack as we can."""
+async def test_functional(deadman_plugin):
+    """Test as much of the whole stack of zgres-sync as we can."""
     config = {
             'sync': {
-                'plugins': 'zgres#zgres-apply\nzgres#zookeeper'},
+                'plugins': 'zgres#zgres-apply zgres#zookeeper zgres#mock-subscriber'},
             'zookeeper': {
                 'connection_string': 'example.org:2181',
-                'path': '/databases',
+                'path': '/mypath',
                 }
             }
-    zk = MyFakeClient()
-    zk.start()
-    zk.create("/databases")
-    zk.create("/databases/clusterA_conn_10.0.0.2", json.dumps({"node": 1}).encode('utf-8'))
-    zk.stop()
-    next_call = asyncio.Event()
-    with mock.patch('zgres.apply.Plugin.conn_info') as conn_info:
-        conn_info.side_effect = lambda info: next_call.set()
+    deadmanA = deadman_plugin('A')
+    deadmanB = deadman_plugin('B')
+    deadmanA.dcs_set_conn_info(dict(answer=42))
+    deadmanB.dcs_set_state(dict(mystate='lamentable'))
+    conn_info_call = asyncio.Event()
+    state_call = asyncio.Event()
+    from . import MockSyncPlugin as RealMockSyncPlugin
+    with mock.patch('zgres.apply.Plugin.conn_info') as conn_info, \
+            mock.patch('zgres.tests.MockSyncPlugin') as MockSyncPlugin:
+        p = RealMockSyncPlugin('', '')
+        p.state.side_effect = lambda info: state_call.set()
+        MockSyncPlugin.return_value = p
+        conn_info.side_effect = lambda info: conn_info_call.set()
         with mock.patch('zgres.zookeeper.KazooClient') as KazooClient:
-            KazooClient.return_value = zk
+            KazooClient.return_value = MyFakeClient(storage=deadmanA._zk._storage)
             app = sync.SyncApp(config)
-    await next_call.wait()
-    next_call.clear()
-    zk.create("/databases/clusterA_conn_10.0.0.1", json.dumps({"node": 1}).encode('utf-8'))
-    await next_call.wait()
-    next_call.clear()
+    await conn_info_call.wait()
+    await state_call.wait()
+    deadmanA.dcs_set_state(dict(mystate='great!'))
+    deadmanB.dcs_set_conn_info(dict(answer=43))
+    conn_info_call.clear()
+    conn_info_call.clear()
+    await conn_info_call.wait()
+    await state_call.wait()
     # did our state get updated?
-    assert dict(app._plugins.plugins['zgres#zookeeper'].watcher) == {
-            'clusterA_conn_10.0.0.1': {'node': 1},
-            'clusterA_conn_10.0.0.2': {'node': 1},
+    assert dict(app._plugins.plugins['zgres#zookeeper']._conn_watcher) == {
+            'mygroup-A': {'answer': 42},
+            'mygroup-B': {'answer': 43}
+            }
+    assert dict(app._plugins.plugins['zgres#zookeeper']._state_watcher) == {
+            'mygroup-A': {'mystate': 'great!'},
+            'mygroup-B': {'mystate': 'lamentable'}
             }
     # the plugin was called twice, once with the original data, and once with new data
     conn_info.assert_has_calls(
-            [mock.call({'clusterA': {'nodes': {'10.0.0.2': {'node': 1}}}}),
-                mock.call({'clusterA': {'nodes': {'10.0.0.2': {'node': 1}, '10.0.0.1': {'node': 1}}}})]
+            [mock.call({'mygroup': {'A': {'answer': 42}}}),
+                mock.call({'mygroup': {'A': {'answer': 42}, 'B': {'answer': 43}}})]
+            )
+    p.state.assert_has_calls(
+            [mock.call({'mygroup': {'B': {'mystate': 'lamentable'}}}),
+                mock.call({'mygroup': {'B': {'mystate': 'lamentable'}, 'A': {'mystate': 'great!'}}})]
             )
 
 @pytest.fixture
