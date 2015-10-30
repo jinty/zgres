@@ -35,6 +35,8 @@ def plugin(cluster):
     app = mock.Mock()
     app.config = dict(
             apt={
+                'postgresql.conf.hot_standby': 'on',
+                'postgresql.conf.wal_level': 'hot_standby',
                 'postgresql_version': pg_version,
                 'pg_hba.conf.allowroot': 'local all postgres peer map=allowroot',
                 'pg_hba.conf': 'prepend',
