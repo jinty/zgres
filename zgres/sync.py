@@ -29,18 +29,9 @@ class SyncApp:
         self._plugins = zgres.plugin.get_plugins(config, 'sync', ['state', 'conn_info', dict(name='start_watching', required=True, type='single')], self)
         if self._plugins.state is None and self._plugins.conn_info is None:
             raise Exception('No plugins configured for zgres-sync')
-        if self._plugins.state is None:
-            self.state = None
-        if self._plugins.conn_info is None:
-            self.conn_info = None
-        self._plugins.start_watching() # start watching for cluster events.
-
-    def conn_info(self, databases):
-        self._plugins.conn_info(databases)
-
-    def state(self, databases):
-        self._plugins.state(databases)
-
+        self._plugins.start_watching(
+                state=self._plugins.state,
+                conn_info=self._plugins.conn_info) # start watching for cluster events.
 
 #
 # Command Line Scripts

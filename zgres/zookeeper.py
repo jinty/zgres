@@ -183,23 +183,23 @@ class ZooKeeperSource:
             self._path_prefix += '/'
 
     @subscribe
-    def start_watching(self):
+    def start_watching(self, state=None, conn_info=None):
         self.zk = KazooClient(hosts=self.app.config['zookeeper']['connection_string'])
         self.zk.start()
-        if self.app.state is not None:
-            self._state_watcher = DictWatch(self.zk, self._path_prefix + 'state', self._notify_state)
-        if self.app.conn_info is not None:
-            self._conn_watcher = DictWatch(self.zk, self._path_prefix + 'conn', self._notify_conn_info)
+        if state is not None:
+            self._state_watcher = DictWatch(
+                    self.zk,
+                    self._path_prefix + 'state',
+                    partial(self._notify, state))
+        if conn_info is not None:
+            self._conn_watcher = DictWatch(
+                    self.zk,
+                    self._path_prefix + 'conn',
+                    partial(self._notify, conn_info))
 
-    def _notify_state(self, state, key, from_val, to_val):
-        app = self.app
-        databases_with_state = _get_clusters(state)
-        app.state(databases_with_state)
+    def _notify(self, callback, state, key, from_val, to_val):
+        callback(_get_clusters(state))
 
-    def _notify_conn_info(self, conn_info, key, from_val, to_val):
-        app = self.app
-        databases_with_conn_info = _get_clusters(conn_info)
-        app.conn_info(databases_with_conn_info)
 
 def _get_clusters(in_dict):
     out_dict = {}
