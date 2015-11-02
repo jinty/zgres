@@ -223,3 +223,17 @@ class Ec2SnapshotBackupPlugin:
             is_mounted,
             message='Waiting to mount all drives in fstab',
             times=30)
+
+    @subscribe
+    def start_monitoring(self):
+        backup_interval = self.app.config['ec2-snapshot'].get('backup_interval', '').strip()
+        if backup_interval:
+            backup_interval = int(backup_interval)
+            loop = asyncio.get_event_loop()
+            loop.call_soon(loop.create_task, self._scheduled_backup(backup_interval))
+    
+    async def _scheduled_backup(interval):
+        loop = asyncio.get_event_loop()
+        while True:
+            await asyncio.sleep(interval)
+            await loop.run_in_executor(None, self.pg_backup)
