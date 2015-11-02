@@ -128,7 +128,7 @@ class Ec2SnapshotBackupPlugin:
                         message='Waiting for snapshot {} to complete'.format(snapshot.id),
                         times=None,
                         max_wait=120)
-                if snapshot.state != 'completed':
+                if snapshot.status != 'completed':
                     raise Exception('Snapshot did not complete: {}'.format(snapshot.state))
         finally:
             pg_conn.cursor().execute("select pg_stop_backup();")
