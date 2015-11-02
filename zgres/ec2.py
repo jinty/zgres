@@ -73,8 +73,9 @@ class Ec2SnapshotBackupPlugin:
         self._region = self._availability_zone[:-1]
         devices = {}
         for k, v in self.app.config['ec2-snapshot'].items():
-            if k.startswith('dev.'):
-                _, device_no, key = k.strip().split('.', 2)
+            if not k.startswith('dev.'):
+                continue
+            _, device_no, key = k.strip().split('.', 2)
             device_no = int(device_no)
             devices.setdefault(device_no, {})[key] = v.strip()
         devices = [d[1] for d in sorted(devices.items())]
@@ -119,7 +120,7 @@ class Ec2SnapshotBackupPlugin:
                     'zgres:wal_position': position,
                     'zgres:device': d}
                 tags.update(usertags)
-                snapshot.add_tags(tag)
+                snapshot.add_tags(tags)
                 def complete():
                     snapshot.update()
                     return snapshot.status in ('completed', 'error')
