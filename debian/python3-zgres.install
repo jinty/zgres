@@ -1,3 +1,3 @@
 debian/tmp/usr/lib/python*
 debian/tmp/usr/bin/*
-debian/zgres.ini etc/zgres/zgres.ini
+debian/zgres.ini etc/zgres
