@@ -96,6 +96,10 @@ class Ec2SnapshotBackupPlugin:
 
     @subscribe
     def pg_backup(self):
+        usertags = {}
+        for k, v in self.app.config['ec2-snapshot'].items():
+            if k.startswith('tag.') and v.strip():
+                usertags[k[4:]] = v.strip()
         conn = self._conn()
         # find the EC2 volumes we should be backing up from their device names
         instance_volumes = self._get_volumes_for_our_devices(conn)
@@ -109,11 +113,13 @@ class Ec2SnapshotBackupPlugin:
             for d in self._devices:
                 v = instance_volumes[d]
                 snapshot = conn.create_snapshot(v.id, "Zgres backup")
-                snapshot.add_tags({
+                tags = {
                     'zgres:id': backup_id,
                     'zgres:db_id': self.app.database_identifier,
                     'zgres:wal_position': position,
-                    'zgres:device': d})
+                    'zgres:device': d}
+                tags.update(usertags)
+                snapshot.add_tags(tag)
                 def complete():
                     snapshot.update()
                     return snapshot.status in ('completed', 'error')
