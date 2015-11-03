@@ -39,6 +39,7 @@ def mock_get_instance_metadata(**kw):
 @pytest.fixture
 def ec2_plugin():
     app = mock.Mock()
+    app.database_identifier = '4242'
     app.config = dict()
     from ..ec2 import Ec2Plugin
     return Ec2Plugin('zgres#ec2', app)
@@ -57,17 +58,20 @@ def test_conn_info(get_instance_metadata, ec2_plugin):
 @pytest.fixture
 def ec2_backup_plugin():
     app = mock.Mock()
+    app.database_identifier = '4242'
     app.pg_connect_info.return_value = dict(user='postgres', host='example.org')
     from ..ec2 import Ec2SnapshotBackupPlugin
     return Ec2SnapshotBackupPlugin('zgres#ec2-backup', app)
 
-@pytest.mark.xfail
 @mock_ec2
 @mock.patch('zgres.ec2.psycopg2')
 @mock.patch('boto.utils.get_instance_metadata', autospec=True)
-def test_ec2_backup_plugin(get_instance_metadata, psycopg2, ec2_backup_plugin):
+@mock.patch('zgres.ec2.LocalDevice', autospec=True)
+@mock.patch('zgres.ec2._all_devices_mounted', autospec=True)
+def test_ec2_backup_plugin(_all_devices_mounted, local_device, get_instance_metadata, psycopg2, ec2_backup_plugin):
     # setup
     import boto.ec2
+    psycopg2.connect().cursor().fetchall.return_value = [['0/2000060']]
     get_instance_metadata.side_effect = mock_get_instance_metadata()
     metadata = get_instance_metadata()
     az = metadata['placement']['availability-zone']

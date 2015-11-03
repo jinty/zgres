@@ -165,20 +165,14 @@ class Ec2SnapshotBackupPlugin:
         to_detach = list(self._devices)
         to_detach.reverse()
         for d in to_detach:
-            local_device = self._ec2_device_to_local(d)
-            if not os.path.exists(local_device):
+            local_device = LocalDevice(d)
+            if not local_device.exists():
                 assert d not in instance_volumes, (d, instance_volumes)
                 # was never there!
                 continue
             vol = instance_volumes[d]
             logging.info('unmounting {}'.format(local_device))
-            check_call(['umount', local_device])
-            mounts = check_output(['mount']).decode('latin-1')
-            for i in mounts.splitlines():
-                parts = i.split()
-                if parts and parts[0] == local_device:
-                    check_call(['fuser', '-m', '-u', 'local_device'])
-                    raise Exception('Device did not unmount:\n{}'.format(mounts))
+            local_device.umount()
             logging.info('detaching {}'.format(vol.id))
             vol.detach()
             _wait_for_volume_available(vol)
@@ -216,11 +210,8 @@ class Ec2SnapshotBackupPlugin:
         for vol in to_attach.values():
             _wait_for_volume_attached(vol)
         logging.info('Mounting everything')
-        # finally, actually mount them all
-        def is_mounted():
-            return not call(['mount', '--all'])
         backoff_wait(
-            is_mounted,
+            _all_devices_mounted,
             message='Waiting to mount all drives in fstab',
             times=30)
 
@@ -237,3 +228,20 @@ class Ec2SnapshotBackupPlugin:
         while True:
             await asyncio.sleep(interval)
             await loop.run_in_executor(None, self.pg_backup)
+
+class LocalDevice:
+    
+    def __init__(self, ec2_device):
+        self._local_device = self._ec2_device_to_local(ec2_device)
+
+    def exists(self):
+        return os.path.exists(self._local_device)
+
+    def __str__(self):
+        return self._local_device
+
+    def umount(self):
+        check_call(['umount', self._local_device])
+
+def _all_devices_mounted():
+    return not call(['mount', '--all'])
