@@ -223,7 +223,7 @@ class Ec2SnapshotBackupPlugin:
             loop = asyncio.get_event_loop()
             loop.call_soon(loop.create_task, self._scheduled_backup(backup_interval))
     
-    async def _scheduled_backup(interval):
+    async def _scheduled_backup(self, interval):
         loop = asyncio.get_event_loop()
         while True:
             await asyncio.sleep(interval)
