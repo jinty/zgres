@@ -76,15 +76,18 @@ def render_template(template, destination, **data):
     with open(template, 'r') as f:
         template = f.read()
     result = template.format(**data)
+    return writeout(result, destination)
+
+def writeout(data, destination):
     if os.path.exists(destination):
         with open(destination, 'r') as f:
             existing = f.read()
-        if existing == result:
+        if existing == data:
             return False
     head, tail = os.path.split(destination)
     tmpfile = os.path.join(head, '.' + tail + '.zgres_tmp')
     with open(tmpfile, 'w') as f:
-        f.write(result)
+        f.write(data)
     os.rename(tmpfile, destination)
     return True
 
