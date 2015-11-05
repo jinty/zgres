@@ -61,7 +61,7 @@ This daemon gets run on all machines which need to know the database connection
 info, that means appservers and probably database nodes if you use streaming
 replication.
 """)
-    config = zgres.config.parse_args(parser, argv)
+    config = zgres.config.parse_args(parser, argv, config_file='sync.ini')
     # Keep a reference to the App to prevent garbage collection
     app = SyncApp(config)
     utils.run_asyncio()

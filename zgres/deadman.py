@@ -476,7 +476,7 @@ It does not:
     - maintain streaming replication (use zgres-apply hooks for that)
     - do remastering (assumed to have happened before we start)
 """)
-    config = zgres.config.parse_args(parser, argv)
+    config = zgres.config.parse_args(parser, argv, config_file='deadman.ini')
     result = utils.run_asyncio(App.run, config)
     sys.exit(result)
 

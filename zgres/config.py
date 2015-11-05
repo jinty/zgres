@@ -9,12 +9,13 @@ class StdOutFilter(logging.Filter):
     def filter(self, record):
         return record.levelno < logging.WARNING
 
-def _add_common_args(parser):
-    parser.add_argument('-c', '--config',
-            dest='config',
-            nargs='*',
-            default=['/etc/zgres/zgres.ini', '/etc/zgres/zgres.ini.d'],
-            help='Use this config file or directory. If a directory, all files ending with .ini are parsed. Order is important with latter files over-riding earlier ones.')
+def _add_common_args(parser, config_file):
+    if config_file is not None:
+        parser.add_argument('-c', '--config',
+                dest='config',
+                nargs='*',
+                default=['/etc/zgres/{}'.format(config_file), '/etc/zgres/{}.d'.format(config_file)],
+                help='Use this config file or directory. If a directory, all files ending with .ini are parsed. Order is important with latter files over-riding earlier ones.')
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument('--debug',
             action='store_true',
@@ -57,9 +58,12 @@ def _get_config(args):
                 config.read_file(open(os.path.join(file_or_dir, cfg), 'r'))
     return config
 
-def parse_args(parser, argv):
-    _add_common_args(parser)
+def parse_args(parser, argv, config_file=None):
+    _add_common_args(parser, config_file)
     args = parser.parse_args(args=argv[1:])
-    config = _get_config(args)
+    if config_file is None:
+        config = None
+    else:
+        config = _get_config(args)
     _setup_logging(args)
     return config

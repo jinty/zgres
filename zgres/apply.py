@@ -31,6 +31,7 @@ from subprocess import call, check_call
 from collections import abc
 
 from .plugin import subscribe
+import zgres.config
 
 #
 # Hook Tools
@@ -154,16 +155,7 @@ class Plugin:
 # Command Line Scripts
 #
 
-def _setup_logging():
-    logging.basicConfig(level=logging.WARN)
-
-def _parse_args(parser, argv):
-    # TODO: add args for setting loglevel here
-    args = parser.parse_args(args=argv[1:])
-    _setup_logging()
-    return args
-
 def apply_cli(argv=sys.argv):
     parser = argparse.ArgumentParser(description='Apply all loaded, but outstanding configs')
-    args = _parse_args(parser, argv)
+    zgres.config.parse_args(parser, argv)
     sys.exit(_apply())
