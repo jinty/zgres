@@ -179,10 +179,6 @@ class Ec2SnapshotBackupPlugin:
             logging.info('deleting {}'.format(vol.id))
             vol.delete()
 
-    def _ec2_device_to_local(self, device):
-        """/dev/sdf -> /dev/xvdf"""
-        return device.replace('/dev/sd', '/dev/xvd')
-
     @subscribe
     def pg_restore(self):
         conn = self._conn()
@@ -233,6 +229,10 @@ class LocalDevice:
     
     def __init__(self, ec2_device):
         self._local_device = self._ec2_device_to_local(ec2_device)
+
+    def _ec2_device_to_local(self, device):
+        """/dev/sdf -> /dev/xvdf"""
+        return device.replace('/dev/sd', '/dev/xvd')
 
     def exists(self):
         return os.path.exists(self._local_device)
