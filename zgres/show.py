@@ -7,7 +7,7 @@ from .deadman import App
 
 def show_cli(argv=sys.argv):
     parser = argparse.ArgumentParser(description="Show zgres info")
-    config = parse_args(parser, argv, config='deadman.ini')
+    config = parse_args(parser, argv, config_file='deadman.ini')
     if config.has_section('deadman') and config['deadman'].get('plugins', '').strip():
         # if deadman is configured show information about it's state
         # HACK, we only need the plugins, really
