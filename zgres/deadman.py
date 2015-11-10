@@ -157,6 +157,7 @@ class App:
     config = None
     database_identifier = None
     tick_time = None
+    _exit_code = 0
 
     def __init__(self, config):
         self.health_problems = {}
@@ -229,7 +230,6 @@ class App:
         returns None if initialzation was successful
         or a number of seconds to wait before trying again to initialize
         """
-        self._loop = asyncio.get_event_loop()
         self.unhealthy('zgres.initialize', 'Initializing')
         self.logger.info('Initializing plugins')
         self._plugins.initialize()
@@ -283,7 +283,8 @@ class App:
                 # This is a wierd situation becase another master should have taken over before
                 # we restarted and got the lock. let's check in a little while if we become healthy,
                 # else try failover again
-                self._loop.call_later(300 * self.tick_time, self._loop.create_task, self._handle_unhealthy_master())
+                loop = asyncio.get_event_loop()
+                loop.call_later(300 * self.tick_time, loop.create_task, self._handle_unhealthy_master())
         return None
 
     def _get_conn_info_from_plugins(self):
@@ -341,7 +342,8 @@ class App:
                 self.restart(10)
             if owner is None:
                 # No-one has the master lock, try take over
-                self._loop.call_soon(self._loop.create_task, self._try_takeover())
+                loop = asyncio.get_event_loop()
+                loop.call_soon(loop.create_task, self._try_takeover())
         if self._plugins.master_lock_changed is not None:
             self._plugins.master_lock_changed(owner)
 
@@ -395,7 +397,8 @@ class App:
                 self._plugins.dcs_delete_conn_info()
         else:
             self._plugins.dcs_delete_conn_info()
-            self._loop.call_soon(self._loop.create_task, self._handle_unhealthy_master())
+            loop = asyncio.get_event_loop()
+            loop.call_soon(loop.create_task, self._handle_unhealthy_master())
 
     async def _handle_unhealthy_master(self):
         if self._giveup_lock.locked():
@@ -430,14 +433,27 @@ class App:
     def _set_conn_info(self):
         self._plugins.dcs_set_conn_info(self._conn_info)
 
-    @classmethod
-    def run(cls, config):
+    def run(self):
+        loop = asyncio.get_event_loop()
         logging.info('Starting')
-        app = App(config)
         timeout = app.initialize()
-        if timeout is None:
-            return
-        app.restart(timeout)
+        if timeout is not None:
+            app.restart(timeout)
+        # Finished initialziation without issue, startup event loop
+        loop.set_exception_handler(self._handle_exception)
+        loop.run_forever()
+        return self._exit_code
+
+    def _handle_exception(self, loop, context):
+        loop.default_exception_handler(context)
+        logging.error('Unexpected exception, exiting...')
+        self._exit_code = 1
+        loop.call_soon(self.restart, 10)
+
+    def _stop(self):
+        # for testing
+        loop = asyncio.get_event_loop()
+        loop.stop()
 
     def restart(self, timeout):
         if self._plugins.pg_replication_role() == 'master':
@@ -446,7 +462,7 @@ class App:
         self._plugins.dcs_disconnect()
         logging.info('sleeping for {} ticks, then restarting'.format(timeout))
         self._sleep(timeout) # yes, this blocks everything. that's the point of it!
-        sys.exit(0) # hopefully we get restarted immediately
+        self._stop()
 
     def pg_connect_info(self):
         # expose pg_connect for other plugins to use
@@ -477,6 +493,5 @@ It does not:
     - do remastering (assumed to have happened before we start)
 """)
     config = zgres.config.parse_args(parser, argv, config_file='deadman.ini')
-    result = utils.run_asyncio(App.run, config)
-    sys.exit(result)
-
+    app = App(config)
+    sys.exit(app.run())

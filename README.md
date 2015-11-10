@@ -50,7 +50,7 @@ directory with 4 sub-directories types:
         is gaurenteed not to change over the lifespan of the znode.  Ephemeral,
         created/maintained by the "deadman" daemon.
 
-    /master/{DATABASE_GROUP_NAME}
+    /lock/{DATABASE_GROUP_NAME}
         This contains the IPADDR:PORT of the current master for the
         database group. Connection info should be looked up in the
         "_conn_" node (if it exists).

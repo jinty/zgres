@@ -330,32 +330,30 @@ def test_plugin_tells_app_to_follow_new_leader(app):
             call.pg_setup_replication(primary_conninfo={'port': 5432, 'host': '127.0.0.9'}),
             call.pg_reload()]
 
-def test_restart_master(app):
+def test_restart_master(app, event_loop):
     plugins = setup_plugins(app,
             pg_replication_role='master')
     app.initialize()
     plugins.reset_mock()
     with patch('time.sleep') as sleep:
-        with patch('sys.exit') as exit:
-            app.restart(10)
-            assert exit.called_once_with(0)
+        app.restart(10)
         assert sleep.called_once_with(10)
+    event_loop.run_forever() # must be stopped by restart()
     assert app._plugins.mock_calls ==  [
             call.pg_replication_role(),
             call.pg_stop(),
             call.dcs_disconnect()
             ]
 
-def test_restart_replica(app):
+def test_restart_replica(app, event_loop):
     plugins = setup_plugins(app,
             pg_replication_role='replica')
     app.initialize()
     plugins.reset_mock()
     with patch('time.sleep') as sleep:
-        with patch('sys.exit') as exit:
-            app.restart(10)
-            assert exit.called_once_with(0)
+        app.restart(10)
         assert sleep.called_once_with(10)
+    event_loop.run_forever() # must be stopped by restart()
     assert app._plugins.mock_calls ==  [
             call.pg_replication_role(),
             call.dcs_disconnect()
@@ -528,10 +526,10 @@ async def test_master_unhealthy(app):
             ]
     plugins.reset_mock()
     # now we should have _handle_unhealthy_master running
-    with patch('asyncio.sleep') as sleep, patch('sys.exit') as exit, patch('time.sleep') as blocking_sleep:
+    with patch('asyncio.sleep') as sleep, patch('zgres.deadman.App._stop') as exit, patch('time.sleep') as blocking_sleep:
         sleeper = FakeSleeper()
         sleep.side_effect = sleeper
-        exit.side_effect = lambda x: sleeper.finish()
+        exit.side_effect = lambda : sleeper.finish()
         # there is no replica, so we just sleep and ping the
         # DCS to find a willing replica
         states = [iter([])]
@@ -554,5 +552,3 @@ async def test_master_unhealthy(app):
                 call.pg_stop(),
                 call.dcs_disconnect()
                 ]
-
-    
