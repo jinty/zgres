@@ -436,9 +436,9 @@ class App:
     def run(self):
         loop = asyncio.get_event_loop()
         logging.info('Starting')
-        timeout = app.initialize()
+        timeout = self.initialize()
         if timeout is not None:
-            app.restart(timeout)
+            self.restart(timeout)
         # Finished initialziation without issue, startup event loop
         loop.set_exception_handler(self._handle_exception)
         loop.run_forever()
