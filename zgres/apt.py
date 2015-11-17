@@ -36,7 +36,8 @@ class AptPostgresqlPlugin:
 
     def __init__(self, name, app):
         self.app = app
-        self._health_check_key = '{}-systemd'.format(name)
+        self._systemd_check_key = '{}-systemd'.format(name)
+        self._select1_check_key = '{}-select1'.format(name)
         self.logger = logging.getLogger(name)
 
     @property
@@ -269,9 +270,11 @@ class AptPostgresqlPlugin:
 
     @subscribe
     def start_monitoring(self):
-        self.app.unhealthy(self._health_check_key, 'Waiting for first systemd check')
         loop = asyncio.get_event_loop()
+        self.app.unhealthy(self._systemd_check_key, 'Waiting for first systemd check')
         loop.call_soon(loop.create_task, self._monitor_systemd())
+        self.app.unhealthy(self._select1_check_key, 'Waiting for first select 1 check')
+        loop.call_soon(loop.create_task, self._monitor_select1())
 
     def _is_active(self):
         return 0 == call(['systemctl', '--quiet', 'is-active', self._service()])
@@ -281,11 +284,35 @@ class AptPostgresqlPlugin:
         while True:
             await sleep(1)
             if self._is_active():
-                self.app.healthy(self._health_check_key)
+                self.app.healthy(self._systemd_check_key)
             else:
                 await sleep(2)
                 if not self._is_active():
-                    self.app.unhealthy(self._health_check_key, 'inactive according to systemd')
+                    self.app.unhealthy(self._systemd_check_key, 'inactive according to systemd')
+
+    def _can_select1(self):
+        try:
+            conn = self._conn()
+            try:
+                cur = conn.cursor()
+                cur.execute('SELECT 1')
+                cur.fetchall()
+            finally:
+                conn.close()
+        except Exception:
+            return False
+        return True
+
+    async def _monitor_select1(self):
+        loop = asyncio.get_event_loop()
+        while True:
+            await sleep(1)
+            if self._can_select1():
+                self.app.healthy(self._select1_check_key)
+            else:
+                await sleep(2)
+                if not self._can_select1():
+                    self.app.unhealthy(self._select1_check_key, 'SELECT 1 failed')
 
     def _trigger_file(self):
         return '/var/run/postgresql/{}-{}.master_trigger'.format(self._version, self._cluster_name)

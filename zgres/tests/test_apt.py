@@ -62,7 +62,7 @@ def test_config_file(plugin, cluster):
 
 @pytest.mark.asyncio
 async def test_monitoring(plugin, cluster):
-    with mock.patch('zgres.apt.sleep') as sleep, mock.patch('zgres.apt.call') as subprocess_call:
+    with mock.patch('zgres.apt.sleep') as sleep, mock.patch('zgres.apt.call') as subprocess_call, mock.patch('zgres.apt.AptPostgresqlPlugin._monitor_select1') as ignored:
         retvals = [
                 0, # become healthy
                 1, # noop
@@ -77,6 +77,7 @@ async def test_monitoring(plugin, cluster):
         await sleeper.wait()
         assert plugin.app.mock_calls == [
                 mock.call.unhealthy('zgres#apt-systemd', 'Waiting for first systemd check'),
+                mock.call.unhealthy('zgres#apt-select1', 'Waiting for first select 1 check'),
                 mock.call.healthy('zgres#apt-systemd'),
                 mock.call.healthy('zgres#apt-systemd'),
                 mock.call.unhealthy('zgres#apt-systemd', 'inactive according to systemd'),
