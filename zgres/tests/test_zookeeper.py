@@ -59,17 +59,6 @@ async def test_functional(deadman_plugin):
     deadmanA.dcs_unlock('master')
     for i in range(3):
         await next_ev()
-    # did our state get updated?
-    assert dict(app._plugins.plugins['zgres#zookeeper']._conn_watcher) == {
-            'mygroup-A': {'answer': 42},
-            'mygroup-B': {'answer': 43}
-            }
-    assert dict(app._plugins.plugins['zgres#zookeeper']._state_watcher) == {
-            'mygroup-A': {'mystate': 'great!'},
-            'mygroup-B': {'mystate': 'lamentable'}
-            }
-    assert dict(app._plugins.plugins['zgres#zookeeper']._masters_watcher) == {}
-    assert dict(app._plugins.plugins['zgres#zookeeper']._databases_watcher) == {'mygroup-database_identifier': '1234'}
     # the plugin was called twice, once with the original data, and once with new data
     p.conn_info.assert_has_calls(
             [mock.call({'mygroup': {'A': {'answer': 42}}}),

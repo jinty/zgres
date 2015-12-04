@@ -186,27 +186,23 @@ class ZooKeeperSource:
 
     @subscribe
     def start_watching(self, state=None, conn_info=None, masters=None, databases=None):
-        self.zk = KazooClient(hosts=self.app.config['zookeeper']['connection_string'])
-        self.zk.start()
+        self._storage = ZookeeperStorage(
+                self.app.config['zookeeper']['connection_string'],
+                self.app.config['zookeeper']['path'].strip())
+        self._storage.dcs_connect()
         if state is not None:
-            self._state_watcher = DictWatch(
-                    self.zk,
-                    self._path_prefix + 'state',
-                    partial(self._notify, state))
+            self._storage.dcs_watch_state(state)
         if conn_info is not None:
-            self._conn_watcher = DictWatch(
-                    self.zk,
-                    self._path_prefix + 'conn',
-                    partial(self._notify, conn_info))
+            self._storage.dcs_watch_conn_info(conn_info)
         if masters is not None:
             self._masters_watcher = DictWatch(
-                    self.zk,
+                    self._storage.connection,
                     self._path_prefix + 'lock',
                     partial(self._notify_masters, masters),
                     deserializer=lambda data: data.decode('utf-8'))
         if databases is not None:
             self._databases_watcher = DictWatch(
-                    self.zk,
+                    self._storage.connection,
                     self._path_prefix + 'static',
                     partial(self._notify_databases, databases),
                     deserializer=lambda data: data.decode('utf-8'))
@@ -229,10 +225,6 @@ class ZooKeeperSource:
                 new_state[k] = master
         callback(new_state)
 
-    def _notify(self, callback, state, key, from_val, to_val):
-        callback(_get_clusters(state))
-
-
 def _get_clusters(in_dict):
     out_dict = {}
     for k, v in in_dict.items():
@@ -245,21 +237,9 @@ class ZooKeeperDeadmanPlugin:
     def __init__(self, name, app):
         self.name = name
         self.app = app
-        self._monitors = {}
         self.tick_time = app.tick_time # seconds: this should match the zookeeper server tick time (normally specified in milliseconds)
         self.logger = logging
         self._takeovers = {}
-
-    def _path(self, type, name=_missing):
-        if name is _missing:
-            name = self.app.my_id
-        if name:
-            return self._path_prefix + type + '/' + self._group_name + '-' + name
-        else:
-            return self._path_prefix + type
-
-    def _lock_path(self, name):
-        return self._storage._path(self._group_name, 'lock', name)
 
     @subscribe
     def initialize(self):
@@ -270,9 +250,6 @@ class ZooKeeperDeadmanPlugin:
         self._storage.dcs_connect()
         self._zk = self._storage.connection
         self._zk.add_listener(self._session_state_threadsafe)
-        self._path_prefix = self.app.config['zookeeper']['path'].strip()
-        if not self._path_prefix.endswith('/'):
-            self._path_prefix += '/'
         self._group_name = self.app.config['zookeeper']['group'].strip()
         if '/' in self._group_name or '-' in self._group_name:
             raise ValueError('cannot have - or / in the group name')
@@ -326,14 +303,22 @@ class ZooKeeperDeadmanPlugin:
             return self._dict_watcher(what, callback)
         return watch
 
+    def _only_my_cluster_filter(self, callback):
+        def f(value):
+            callback(value.get(self._group_name, {}))
+        return f
+
     @subscribe
     def dcs_watch(self, state=None, conn_info=None):
-        path = self._lock_path('master')
-        self._monitors['master_lock_watch'] = self._zk.DataWatch(path, self._master_lock_changes)
+        self._storage.dcs_watch_lock(self._group_name, 'master', self._master_lock_changes)
         if state:
-            self._state_watcher = self._dict_watcher('state', state)
+            self._storage.dcs_watch_state(
+                    self._only_my_cluster_filter(state),
+                    self._group_name)
         if conn_info:
-            self._state_watcher = self._dict_watcher('conn', conn_info)
+            self._storage.dcs_watch_conn_info(
+                    self._only_my_cluster_filter(conn_info),
+                    self._group_name)
 
     def _master_lock_changes(self, data, stat, event):
         if data is not None:
@@ -422,6 +407,7 @@ class ZookeeperStorage:
         self._path_prefix = path
         if not self._path_prefix.endswith('/'):
             self._path_prefix += '/'
+        self._watchers = {}
 
     @property
     def connection(self):
@@ -435,12 +421,32 @@ class ZookeeperStorage:
         # for testing only
         self._zk.stop()
 
+    def _dict_watcher(self, group, what, callback):
+        def hook(state, key, from_val, to_val):
+            callback(_get_clusters(state))
+        path = self._folder_path(what)
+        try:
+            watch = DictWatch(self._zk, path, hook, prefix=group)
+        except kazoo.exceptions.NoNodeError:
+            self._zk.create(path, makepath=True)
+            return self._dict_watcher(group, what, callback)
+        self._watchers[id(watch)] = watch
+        return watch
+
+    def dcs_watch_conn_info(self, callback, group=None):
+        self._dict_watcher(group, 'conn', callback)
+
+    def dcs_watch_state(self, callback, group=None):
+        self._dict_watcher(group, 'state', callback)
+
+    def _folder_path(self, folder):
+        return self._path_prefix + folder
+
     def _path(self, group, folder, key):
         return self._path_prefix + folder + '/' + group + '-' + key
 
     def _get_static(self, group, key):
         path = self._path(group, 'static', key)
-        print(repr(path))
         try:
             data, stat = self._zk.get(path)
         except kazoo.exceptions.NoNodeError:
@@ -449,7 +455,6 @@ class ZookeeperStorage:
     
     def _set_static(self, group, key, data, overwrite=False):
         path = self._path(group, 'static', key)
-        print(repr(path))
         try:
             self._zk.create(path, data, makepath=True)
         except kazoo.exceptions.NodeExistsError:
@@ -528,6 +533,11 @@ class ZookeeperStorage:
                 return 'broken'
             return result
         return 'failed'
+
+    def dcs_watch_lock(self, group, name, callback):
+        path = self._path(group, 'lock', name)
+        w = self._zk.DataWatch(path, callback)
+        self._watchers[id(w)] = w
 
     def _set_info(self, group, type, owner, data):
         path = self._path(group, type, owner)
