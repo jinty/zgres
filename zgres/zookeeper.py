@@ -345,12 +345,12 @@ class ZooKeeperDeadmanPlugin:
             self._log_takeover('state/{}/{}'.format(self._group_name, self.app.my_id))
 
     @subscribe
-    def dcs_get_all_conn_info(self):
-        return self._storage.dcs_get_all_conn_info(group=self._group_name)
+    def dcs_list_conn_info(self):
+        return self._storage.dcs_list_conn_info(group=self._group_name)
 
     @subscribe
-    def dcs_get_all_state(self):
-        return self._storage.dcs_get_all_state(group=self._group_name)
+    def dcs_list_state(self):
+        return self._storage.dcs_list_state(group=self._group_name)
 
     @subscribe
     def dcs_delete_conn_info(self):
@@ -592,10 +592,10 @@ class ZookeeperStorage:
             state = json.loads(data.decode('ascii'))
             yield owner, state
 
-    def dcs_get_all_conn_info(self, group=None):
+    def dcs_list_conn_info(self, group=None):
         return self._get_all_info(group, 'conn')
 
-    def dcs_get_all_state(self, group=None):
+    def dcs_list_state(self, group=None):
         return self._get_all_info(group, 'state')
 
     def dcs_delete_conn_info(self, group, owner):

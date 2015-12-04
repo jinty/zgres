@@ -203,9 +203,9 @@ async def test_groups_are_independant(deadman_plugin):
             mock.call({'C': {'name': 'C'}}),
             ]
     # We can get all info
-    assert sorted(pluginA.dcs_get_all_state()) == sorted(pluginB.dcs_get_all_state())
-    assert sorted(pluginA.dcs_get_all_state()) == [('A', {'name': 'A'}), ('B', {'name': 'B'})]
-    assert sorted(pluginC.dcs_get_all_state()) == [('C', {'name': 'C'})]
+    assert sorted(pluginA.dcs_list_state()) == sorted(pluginB.dcs_list_state())
+    assert sorted(pluginA.dcs_list_state()) == [('A', {'name': 'A'}), ('B', {'name': 'B'})]
+    assert sorted(pluginC.dcs_list_state()) == [('C', {'name': 'C'})]
 
 def test_errorlog_after_second_takeover(deadman_plugin):
     plugin = deadman_plugin
@@ -223,4 +223,4 @@ def test_errorlog_after_second_takeover(deadman_plugin):
     pluginA2.dcs_set_state(dict(server=44)) 
     assert pluginA2.logger.error.called
     # though the state is still set
-    assert sorted(pluginA1.dcs_get_all_state()) == [('A', dict(server=44))]
+    assert sorted(pluginA1.dcs_list_state()) == [('A', dict(server=44))]

@@ -72,7 +72,7 @@ _PLUGIN_API = [
         dict(name='dcs_set_state',
             required=True,
             type='multiple'),
-        dict(name='dcs_get_all_state',
+        dict(name='dcs_list_state',
             required=True,
             type='single'),
 
@@ -82,7 +82,7 @@ _PLUGIN_API = [
         dict(name='dcs_set_conn_info',
             required=True,
             type='multiple'),
-        dict(name='dcs_get_all_conn_info',
+        dict(name='dcs_list_conn_info',
             required=True,
             type='single'),
 
@@ -348,7 +348,7 @@ class App:
             self._plugins.master_lock_changed(owner)
 
     def _willing_replicas(self):
-        return self._plugins.willing_replicas(self._plugins.dcs_get_all_state())
+        return self._plugins.willing_replicas(self._plugins.dcs_list_state())
 
     def _am_i_best_replica(self):
         better = []
