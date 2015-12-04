@@ -320,9 +320,7 @@ class ZooKeeperDeadmanPlugin:
                     self._only_my_cluster_filter(conn_info),
                     self._group_name)
 
-    def _master_lock_changes(self, data, stat, event):
-        if data is not None:
-            data = data.decode('utf-8')
+    def _master_lock_changes(self, data):
         self._loop.call_soon_threadsafe(self.app.master_lock_changed, data)
 
     @subscribe
@@ -535,8 +533,12 @@ class ZookeeperStorage:
         return 'failed'
 
     def dcs_watch_lock(self, group, name, callback):
+        def decode(data, stat, event):
+            if data is not None:
+                data = data.decode('utf-8')
+            return callback(data)
         path = self._path(group, 'lock', name)
-        w = self._zk.DataWatch(path, callback)
+        w = self._zk.DataWatch(path, decode)
         self._watchers[id(w)] = w
 
     def _set_info(self, group, type, owner, data):
