@@ -9,13 +9,14 @@ class StdOutFilter(logging.Filter):
     def filter(self, record):
         return record.levelno < logging.WARNING
 
-def _add_common_args(parser, config_file):
-    if config_file is not None:
-        parser.add_argument('-c', '--config',
-                dest='config',
-                nargs='*',
-                default=['/etc/zgres/{}'.format(config_file), '/etc/zgres/{}.d'.format(config_file)],
-                help='Use this config file or directory. If a directory, all files ending with .ini are parsed. Order is important with latter files over-riding earlier ones.')
+def add_config_file(parser, config_file):
+    parser.add_argument('-c', '--config',
+            dest='config',
+            nargs='*',
+            default=['/etc/zgres/{}'.format(config_file), '/etc/zgres/{}.d'.format(config_file)],
+            help='Use this config file or directory. If a directory, all files ending with .ini are parsed. Order is important with latter files over-riding earlier ones.')
+
+def add_logging_args(parser):
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument('--debug',
             action='store_true',
@@ -27,7 +28,7 @@ def _add_common_args(parser, config_file):
             action='store_true',
             help='Print only errors')
 
-def _setup_logging(config):
+def setup_logging(config):
     root_logger = logging.getLogger()
     level = logging.WARN
     if config.quiet:
@@ -46,7 +47,7 @@ def _setup_logging(config):
     stderr.setLevel(logging.WARNING)
     root_logger.addHandler(stderr)
 
-def _get_config(args):
+def read_config_file(args):
     config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
     for file_or_dir in args.config:
         if os.path.isfile(file_or_dir):
@@ -59,11 +60,13 @@ def _get_config(args):
     return config
 
 def parse_args(parser, argv, config_file=None):
-    _add_common_args(parser, config_file)
+    if config_file is not None:
+        add_config_file(parser, config_file)
+    add_logging_args(parser)
     args = parser.parse_args(args=argv[1:])
+    setup_logging(args)
     if config_file is None:
         config = None
     else:
-        config = _get_config(args)
-    _setup_logging(args)
+        config = read_config_file(args)
     return config
