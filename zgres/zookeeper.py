@@ -195,35 +195,12 @@ class ZooKeeperSource:
         if conn_info is not None:
             self._storage.dcs_watch_conn_info(conn_info)
         if masters is not None:
-            self._masters_watcher = DictWatch(
-                    self._storage.connection,
-                    self._path_prefix + 'lock',
-                    partial(self._notify_masters, masters),
-                    deserializer=lambda data: data.decode('utf-8'))
+            self._storage.dcs_watch_locks('master', masters)
         if databases is not None:
-            self._databases_watcher = DictWatch(
-                    self._storage.connection,
-                    self._path_prefix + 'static',
-                    partial(self._notify_databases, databases),
-                    deserializer=lambda data: data.decode('utf-8'))
+            self._storage.dcs_watch_database_identifiers(partial(self._notify_databases, databases))
 
-    def _notify_databases(self, callback, state, key, from_val, to_val):
-        c_state = _get_clusters(state)
-        new_state = []
-        for k, v in c_state.items():
-            database_identifier = v.get('database_identifier', None)
-            if database_identifier is not None:
-                new_state.append(k)
-        callback(new_state)
-
-    def _notify_masters(self, callback, state, key, from_val, to_val):
-        c_state = _get_clusters(state)
-        new_state = {}
-        for k, v in c_state.items():
-            master = v.get('master', None)
-            if master is not None:
-                new_state[k] = master
-        callback(new_state)
+    def _notify_databases(self, callback, state):
+        callback(list(state.keys()))
 
 def _get_clusters(in_dict):
     out_dict = {}
@@ -310,7 +287,7 @@ class ZooKeeperDeadmanPlugin:
 
     @subscribe
     def dcs_watch(self, state=None, conn_info=None):
-        self._storage.dcs_watch_lock(self._group_name, 'master', self._master_lock_changes)
+        self._storage.dcs_watch_lock('master', self._group_name, self.app.master_lock_changed)
         if state:
             self._storage.dcs_watch_state(
                     self._only_my_cluster_filter(state),
@@ -319,9 +296,6 @@ class ZooKeeperDeadmanPlugin:
             self._storage.dcs_watch_conn_info(
                     self._only_my_cluster_filter(conn_info),
                     self._group_name)
-
-    def _master_lock_changes(self, data):
-        self._loop.call_soon_threadsafe(self.app.master_lock_changed, data)
 
     @subscribe
     def dcs_get_lock_owner(self, name):
@@ -423,8 +397,9 @@ class ZookeeperStorage:
         def hook(state, key, from_val, to_val):
             callback(_get_clusters(state))
         path = self._folder_path(what)
+        prefix = group and group + '-' or group
         try:
-            watch = DictWatch(self._zk, path, hook, prefix=group)
+            watch = DictWatch(self._zk, path, hook, prefix=prefix)
         except kazoo.exceptions.NoNodeError:
             self._zk.create(path, makepath=True)
             return self._dict_watcher(group, what, callback)
@@ -450,7 +425,7 @@ class ZookeeperStorage:
         except kazoo.exceptions.NoNodeError:
             return None
         return data
-    
+
     def _set_static(self, group, key, data, overwrite=False):
         path = self._path(group, 'static', key)
         try:
@@ -532,14 +507,52 @@ class ZookeeperStorage:
             return result
         return 'failed'
 
-    def dcs_watch_lock(self, group, name, callback):
-        def decode(data, stat, event):
+    def dcs_watch_lock(self, name, group, callback):
+        loop = asyncio.get_event_loop()
+        def handler(data, stat, event):
             if data is not None:
                 data = data.decode('utf-8')
-            return callback(data)
+            loop.call_soon_threadsafe(callback, data)
         path = self._path(group, 'lock', name)
-        w = self._zk.DataWatch(path, decode)
+        w = self._zk.DataWatch(path, handler)
         self._watchers[id(w)] = w
+
+    def dcs_watch_database_identifiers(self, callback):
+        name = 'database_identifier'
+        def handler(state, key, from_val, to_val):
+            # this is probably more complex than it needs to be!
+            c_state = _get_clusters(state)
+            new_state = {}
+            for k, v in c_state.items():
+                ours = v.get(name, None)
+                if ours is not None:
+                    new_state[k] = ours
+            callback(new_state)
+        dirpath = self._folder_path('static')
+        watch = DictWatch(
+                self._zk,
+                dirpath,
+                handler,
+                deserializer=lambda data: data.decode('utf-8'))
+        self._watchers[id(watch)] = watch
+
+    def dcs_watch_locks(self, name, callback):
+        def handler(state, key, from_val, to_val):
+            # this is probably more complex than it needs to be!
+            c_state = _get_clusters(state)
+            new_state = {}
+            for k, v in c_state.items():
+                ours = v.get(name, None)
+                if ours is not None:
+                    new_state[k] = ours
+            callback(new_state)
+        dirpath = self._folder_path('lock')
+        watch = DictWatch(
+                self._zk,
+                dirpath,
+                handler,
+                deserializer=lambda data: data.decode('utf-8'))
+        self._watchers[id(watch)] = watch
 
     def _set_info(self, group, type, owner, data):
         path = self._path(group, type, owner)
@@ -566,7 +579,7 @@ class ZookeeperStorage:
         return self._set_info(group, 'state', owner, data)
 
     def _get_all_info(self, group, type):
-        dirpath = self._path_prefix + type
+        dirpath = self._folder_path(type)
         try:
             children = self._zk.get_children(dirpath)
         except kazoo.exceptions.NoNodeError:
@@ -576,7 +589,7 @@ class ZookeeperStorage:
             if group is not None and this_group != group:
                 continue
             data, state = self._zk.get(dirpath + '/' + name)
-            state = json.loads(data.decode('ascii')) 
+            state = json.loads(data.decode('ascii'))
             yield owner, state
 
     def dcs_get_all_conn_info(self, group=None):
