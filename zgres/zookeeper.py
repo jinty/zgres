@@ -259,14 +259,17 @@ class ZooKeeperDeadmanPlugin:
             return self._path_prefix + type
 
     def _lock_path(self, name):
-        return self._path('lock', name)
+        return self._storage._path(self._group_name, 'lock', name)
 
     @subscribe
     def initialize(self):
         self._loop = asyncio.get_event_loop()
-        self._zk = KazooClient(hosts=self.app.config['zookeeper']['connection_string'])
+        self._storage = ZookeeperStorage(
+                self.app.config['zookeeper']['connection_string'],
+                self.app.config['zookeeper']['path'].strip())
+        self._storage.dcs_connect()
+        self._zk = self._storage.connection
         self._zk.add_listener(self._session_state_threadsafe)
-        self._zk.start()
         self._path_prefix = self.app.config['zookeeper']['path'].strip()
         if not self._path_prefix.endswith('/'):
             self._path_prefix += '/'
@@ -295,52 +298,21 @@ class ZooKeeperDeadmanPlugin:
         else:
             self.app.healthy(unhealthy_key)
 
-    def _get_static(self, key):
-        path = self._path('static', key)
-        try:
-            data, stat = self._zk.get(path)
-        except kazoo.exceptions.NoNodeError:
-            return None
-        return data
-    
-    def _set_static(self, key, data, overwrite=False):
-        path = self._path('static', key)
-        try:
-            self._zk.create(path, data, makepath=True)
-        except kazoo.exceptions.NodeExistsError:
-            if overwrite:
-                self._zk.set(path, data)
-                return True
-            return False
-        return True
-
     @subscribe
     def dcs_set_database_identifier(self, database_id):
-        database_id = database_id.encode('ascii')
-        return self._set_static('database_identifier', database_id)
+        return self._storage.dcs_set_database_identifier(self._group_name, database_id)
 
     @subscribe
     def dcs_get_database_identifier(self):
-        data = self._get_static('database_identifier')
-        if data is not None:
-            data = data.decode('ascii')
-        return data
+        return self._storage.dcs_get_database_identifier(self._group_name)
 
     @subscribe
     def dcs_set_timeline(self, timeline):
-        assert isinstance(timeline, int)
-        existing = self.dcs_get_timeline()
-        if existing > timeline:
-            raise ValueError('Timelines can only increase.')
-        timeline = str(timeline).encode('ascii')
-        self._set_static('timeline', timeline, overwrite=True)
+        return self._storage.dcs_set_timeline(self._group_name, timeline)
 
     @subscribe
     def dcs_get_timeline(self):
-        data = self._get_static('timeline')
-        if data is None:
-            data = b'0'
-        return int(data.decode('ascii'))
+        return self._storage.dcs_get_timeline(self._group_name)
 
     def _dict_watcher(self, what, callback):
         def hook(state, key, from_val, to_val):
@@ -370,56 +342,26 @@ class ZooKeeperDeadmanPlugin:
 
     @subscribe
     def dcs_get_lock_owner(self, name):
-        path = self._lock_path(name)
-        try:
-            existing_data, stat = self._zk.get(path)
-        except kazoo.exceptions.NoNodeError:
-            return None
-        return existing_data.decode('utf-8')
+        return self._storage.dcs_get_lock_owner(self._group_name, name)
 
     @subscribe
     def dcs_lock(self, name):
-        data = self.app.my_id.encode('utf-8')
-        path = self._lock_path(name)
-        try:
-            self._zk.create(path, data, ephemeral=True, makepath=True)
+        result = self._storage.dcs_lock(
+                self._group_name,
+                name,
+                self.app.my_id)
+        if result in ('locked', 'owned'):
             return True
-        except kazoo.exceptions.NodeExistsError:
-            pass
-        # lock exists, do we have it, can we break it?
-        try:
-            existing_data, stat = self._zk.get(path)
-        except kazoo.exceptions.NoNodeError:
-            # lock broke while we were looking at it
-            # try get it again
-            return self.dcs_lock(name)
-        if stat.owner_session_id == self._zk.client_id[0]:
-            # we already own the lock
+        elif result == 'broken':
+            self._log_takeover('lock/{}/{}'.format(self._group_name, self.app.my_id))
             return True
-        elif data == existing_data:
-            # it is our log, perhaps I am restarting. of there are 2 of me running!
-            self._log_takeover(path)
-            try:
-                self._zk.delete(path, version=stat.version)
-            except (kazoo.exceptions.NoNodeError, kazoo.exceptions.BadVersionError):
-                # lock broke while we were looking at it
-                pass
-            # try get the lock again
-            return self.dcs_lock(name)
-        return False
+        elif result == 'failed':
+            return False
+        raise AssertionError(result)
 
     @subscribe
     def dcs_unlock(self, name):
-        owner = self._get_lock_owner(name)
-        if owner == self.app.my_id:
-            self._zk.delete(self._lock_path(name))
-
-    def _get_lock_owner(self, name):
-        try:
-            owner, stat = self._zk.get(self._lock_path(name))
-        except kazoo.exceptions.NoNodeError:
-            return None
-        return owner.decode('utf-8')
+        self._storage.dcs_unlock(self._group_name, name, self.app.my_id)
 
     def _log_takeover(self, path):
         if self._takeovers.get(path, False):
@@ -433,63 +375,207 @@ class ZooKeeperDeadmanPlugin:
             self.logger.info('Taking over {}'.format(path))
         self._takeovers[path] = True
 
-    def _set_info(self, type, data):
-        path = self._path(type)
+    @subscribe
+    def dcs_set_conn_info(self, data):
+        how = self._storage.dcs_set_conn_info(self._group_name, self.app.my_id, data)
+        if how == 'takeover':
+            self._log_takeover('conn/{}/{}'.format(self._group_name, self.app.my_id))
+
+    @subscribe
+    def dcs_set_state(self, data):
+        how = self._storage.dcs_set_state(self._group_name, self.app.my_id, data)
+        if how == 'takeover':
+            self._log_takeover('state/{}/{}'.format(self._group_name, self.app.my_id))
+
+    @subscribe
+    def dcs_get_all_conn_info(self):
+        return self._storage.dcs_get_all_conn_info(group=self._group_name)
+
+    @subscribe
+    def dcs_get_all_state(self):
+        return self._storage.dcs_get_all_state(group=self._group_name)
+
+    @subscribe
+    def dcs_delete_conn_info(self):
+        self._storage.dcs_delete_conn_info(
+                self._group_name,
+                self.app.my_id)
+
+    @subscribe
+    def dcs_disconnect(self):
+        # for testing only
+        self._zk.remove_listener(self._session_state_threadsafe)
+        self._storage.dcs_disconnect()
+
+
+class ZookeeperStorage:
+    """A low level storage object.
+
+    Manages and publishes the zookeeper connection.
+
+    Manages the database "schema" and allows access to multiple "groups"
+    database servers, each representing one logical cluster.
+    """
+
+    def __init__(self, connection_string, path):
+        self._connection_string = connection_string
+        self._path_prefix = path
+        if not self._path_prefix.endswith('/'):
+            self._path_prefix += '/'
+
+    @property
+    def connection(self):
+        return self._zk
+
+    def dcs_connect(self):
+        self._zk = KazooClient(hosts=self._connection_string)
+        self._zk.start()
+
+    def dcs_disconnect(self):
+        # for testing only
+        self._zk.stop()
+
+    def _path(self, group, folder, key):
+        return self._path_prefix + folder + '/' + group + '-' + key
+
+    def _get_static(self, group, key):
+        path = self._path(group, 'static', key)
+        print(repr(path))
+        try:
+            data, stat = self._zk.get(path)
+        except kazoo.exceptions.NoNodeError:
+            return None
+        return data
+    
+    def _set_static(self, group, key, data, overwrite=False):
+        path = self._path(group, 'static', key)
+        print(repr(path))
+        try:
+            self._zk.create(path, data, makepath=True)
+        except kazoo.exceptions.NodeExistsError:
+            if overwrite:
+                self._zk.set(path, data)
+                return True
+            return False
+        return True
+
+    def dcs_get_timeline(self, group):
+        data = self._get_static(group, 'timeline')
+        if data is None:
+            data = b'0'
+        return int(data.decode('ascii'))
+
+    def dcs_set_timeline(self, group, timeline):
+        assert isinstance(timeline, int)
+        existing = self.dcs_get_timeline(group)
+        if existing > timeline:
+            raise ValueError('Timelines can only increase.')
+        timeline = str(timeline).encode('ascii')
+        self._set_static(group, 'timeline', timeline, overwrite=True)
+
+    def dcs_set_database_identifier(self, group, database_id):
+        database_id = database_id.encode('ascii')
+        return self._set_static(group, 'database_identifier', database_id)
+
+    def dcs_get_database_identifier(self, group):
+        data = self._get_static(group, 'database_identifier')
+        if data is not None:
+            data = data.decode('ascii')
+        return data
+
+    def dcs_get_lock_owner(self, group, name):
+        path = self._path(group, 'lock', name)
+        try:
+            existing_data, stat = self._zk.get(path)
+        except kazoo.exceptions.NoNodeError:
+            return None
+        return existing_data.decode('utf-8')
+
+    def dcs_unlock(self, group, name, owner):
+        existing_owner = self.dcs_get_lock_owner(group, name)
+        if existing_owner == owner:
+            path = self._path(group, 'lock', name)
+            self._zk.delete(path)
+
+    def dcs_lock(self, group, name, owner):
+        data = owner.encode('utf-8')
+        path = self._path(group, 'lock', name)
+        try:
+            self._zk.create(path, data, ephemeral=True, makepath=True)
+            return 'locked'
+        except kazoo.exceptions.NodeExistsError:
+            pass
+        # lock exists, do we have it, can we break it?
+        try:
+            existing_data, stat = self._zk.get(path)
+        except kazoo.exceptions.NoNodeError:
+            # lock broke while we were looking at it
+            # try get it again
+            return self.dcs_lock(group, name, owner)
+        if stat.owner_session_id == self._zk.client_id[0]:
+            # we already own the lock
+            return 'owned'
+        elif data == existing_data:
+            # it is our log, perhaps I am restarting. of there are 2 of me running!
+            try:
+                self._zk.delete(path, version=stat.version)
+            except (kazoo.exceptions.NoNodeError, kazoo.exceptions.BadVersionError):
+                # lock broke while we were looking at it
+                pass
+            # try get the lock again
+            result = self.dcs_lock(group, name, owner)
+            if result == 'locked':
+                return 'broken'
+            return result
+        return 'failed'
+
+    def _set_info(self, group, type, owner, data):
+        path = self._path(group, type, owner)
         data = json.dumps(data)
         data = data.encode('ascii')
         try:
             stat = self._zk.set(path, data)
+            how = 'existing'
         except kazoo.exceptions.NoNodeError:
+            how = 'create'
             stat = None
         if stat is not None and stat.owner_session_id != self._zk.client_id[0]:
-            self._log_takeover(path)
             self._zk.delete(path)
+            how = 'takeover'
             stat = None
         if stat is None:
-            self._zk.create(self._path(type), data, ephemeral=True, makepath=True)
+            self._zk.create(path, data, ephemeral=True, makepath=True)
+        return how
 
-    @subscribe
-    def dcs_set_conn_info(self, data):
-        return self._set_info('conn', data)
+    def dcs_set_conn_info(self, group, owner, data):
+        return self._set_info(group, 'conn', owner, data)
 
-    @subscribe
-    def dcs_set_state(self, data):
-        return self._set_info('state', data)
+    def dcs_set_state(self, group, owner, data):
+        return self._set_info(group, 'state', owner, data)
 
-    def _get_all_info(self, type):
+    def _get_all_info(self, group, type):
         dirpath = self._path_prefix + type
         try:
             children = self._zk.get_children(dirpath)
         except kazoo.exceptions.NoNodeError:
             return iter([])
         for name in children:
-            if not name.startswith(self._group_name + '-'):
+            this_group, owner = name.split('-', 1)
+            if group is not None and this_group != group:
                 continue
             data, state = self._zk.get(dirpath + '/' + name)
             state = json.loads(data.decode('ascii')) 
-            yield name[len(self._group_name + '-'):], state
-    
-    @subscribe
-    def dcs_get_all_conn_info(self):
-        return self._get_all_info('conn')
+            yield owner, state
 
-    @subscribe
-    def dcs_get_all_state(self):
-        return self._get_all_info('state')
+    def dcs_get_all_conn_info(self, group=None):
+        return self._get_all_info(group, 'conn')
 
-    def _delete_info(self, type):
+    def dcs_get_all_state(self, group=None):
+        return self._get_all_info(group, 'state')
+
+    def dcs_delete_conn_info(self, group, owner):
+        path = self._path(group, 'conn', owner)
         try:
-            self._zk.delete(self._path(type))
+            self._zk.delete(path)
         except kazoo.exceptions.NoNodeError:
             pass
-    
-    @subscribe
-    def dcs_delete_conn_info(self):
-        return self._delete_info('conn')
-
-    @subscribe
-    def dcs_disconnect(self):
-        # for testing only
-        self._zk.remove_listener(self._session_state_threadsafe)
-        self._zk.stop()
-
