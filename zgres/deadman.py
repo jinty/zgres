@@ -32,10 +32,10 @@ _PLUGIN_API = [
             required=False,
             type='multiple'),
         
-        dict(name='willing_replicas', # passed an iterator of the state of all nodes, returns an iterator of the state of the replicas which are "willing" to take over
-            required=True,
-            type='single'),
-        dict(name='best_replicas', # passed an iterator of the "willing" replicas (i.e. return value of willing_replicas) and returns an iterator only including the "best" replica for failover
+        dict(name='veto_takeover', # passed the state just before state is updated in the DCS, return True if we are not willing to takeover. This will result in the "willing" key in the state being None. The veto should only take into account values in the passed state object.
+            required=False,
+            type='multiple'),
+        dict(name='best_replicas', # passed an iterator of the "willing" replicas (i.e. replicas with a non-null "willing" value in the state of sufficient age) and returns an iterator of the "best" replicas for failover
             required=True,
             type='single'),
 
@@ -303,6 +303,9 @@ class App:
     def update_state(self, **kw):
         changed = False
         for k, v in kw.items():
+            if k in ['willing']:
+                self.logger.warn('Cannot set state for {}={}, key {} is automatically set'.format(k, v, k))
+                continue
             if k in self._conn_info:
                 self.logger.warn('Cannot set state for {}={}, key {} has already been set in the connection info'.format(k, v, k))
                 continue
@@ -311,9 +314,31 @@ class App:
             if v != existing:
                 changed = True
                 self._state[k] = v
+        changed = self._update_auto_state() or changed
         if changed and 'zgres.initialize' not in self.health_problems:
             # don't update state in the DCS till we are finished updating
             self._plugins.dcs_set_state(self._state)
+
+    def _update_auto_state(self):
+        """Update any keys in state which the deadman App itself calculates"""
+        state = self._state
+        willing = True
+        changed = False
+        if state.get('health_problems', True):
+            willing = False
+        if state.get('replication_role', None) != 'replica':
+            willing = False
+        if willing and self._plugins.veto_takeover is not None:
+            for plugin_name, vetoed in self._plugins.veto_takeover(deepcopy(self._state)):
+                if vetoed:
+                    willing = False
+        if willing and state.get('willing', None) is None:
+            state['willing'] = time.time()
+            changed = True
+        elif not willing and state.get('willing', None) is not None:
+            state['willing'] = None
+            changed = True
+        return changed
 
     def _update_timeline(self):
         my_timeline = self._plugins.pg_get_timeline()
@@ -348,11 +373,18 @@ class App:
             self._plugins.master_lock_changed(owner)
 
     def _willing_replicas(self):
-        return self._plugins.willing_replicas(self._plugins.dcs_list_state())
+        for id, state in self._plugins.dcs_list_state():
+            if state.get('willing', None) is not None:
+                if state['willing'] + 600 < time.time():
+                    yield id, state
+                else:
+                    logging.warn('Ignoring willing node {} as it has been willing less than 5 minutes'.format(id))
 
     def _am_i_best_replica(self):
+        # Check how I am doing compared to my brethern
         better = []
-        for id, state in self._plugins.best_replicas(self._willing_replicas()):
+        willing_replicas = list(self._willing_replicas()) # list() for easer testing
+        for id, state in self._plugins.best_replicas(willing_replicas):
             if id == self.my_id:
                 return True
             better.append((id, state))
@@ -375,6 +407,11 @@ class App:
                 self.logger.info('There is a new master: {}, stop trying to take over'.format(self._master_lock_owner))
                 break
             if self._am_i_best_replica():
+                # re-check my local state
+                self.update_state()
+                if self._state['willing'] is None:
+                    self.logger.info('Abstaining from leader election as recheck of local state rendered me unwilling')
+                    continue
                 # try get the master lock, if this suceeds, master_lock_change will be called again
                 # and will bring us out of replication
                 self.logger.info('I am one of the best, trying to get the master lock')

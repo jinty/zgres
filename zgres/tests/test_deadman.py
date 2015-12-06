@@ -6,6 +6,14 @@ import pytest
 from . import FakeSleeper
 from . import deadman_app
 
+def fake_best_replicas(replicas):
+    l = sorted(replicas, key=lambda x: x[1]['willing'])
+    if l:
+        winner = l[0][1]['willing']
+        l = [i for i in l if winner == i[1]['willing']]
+    for id, state in l:
+        yield id, state
+
 def mock_state(replica=False, **kw):
     if replica:
         defaults = dict(
@@ -37,6 +45,7 @@ def state_getter(app, *extra_states):
 
 def setup_plugins(app, **kw):
     plugins = app._plugins
+    plugins.best_replicas.side_effect = fake_best_replicas
     from ..deadman import _PLUGIN_API
     get_my_id = kw.get('get_my_id', '42')
     pg_replication_role = kw.get('pg_replication_role', 'replica')
@@ -48,6 +57,7 @@ def setup_plugins(app, **kw):
             'master_lock_changed': NO_SUBSCRIBER,
             'notify_conn_info': NO_SUBSCRIBER,
             'notify_state': NO_SUBSCRIBER,
+            'veto_takeover': NO_SUBSCRIBER,
             'get_my_id': get_my_id,
             'dcs_get_database_identifier': '12345',
             'pg_get_database_identifier': '12345',
@@ -291,12 +301,14 @@ def test_replica_start(app):
     assert app.health_problems == {'test_monitor': {'can_be_replica': False, 'reason': 'Waiting for first check'}}
     # Our test monitor becomes healthy
     plugins.reset_mock()
-    app.healthy('test_monitor')
+    with patch('time.time') as mock_time:
+        app.healthy('test_monitor')
     assert plugins.mock_calls ==  [
             call.dcs_set_state({'health_problems': {},
                 'a': 'b',
                 'replication_role': 'replica',
                 'host': '127.0.0.1',
+                'willing': mock_time(),
                 }),
             call.pg_replication_role(),
             call.dcs_set_conn_info({'a': 'b', 'host': '127.0.0.1'}),
@@ -445,6 +457,7 @@ async def test_replica_reaction_to_master_lock_change(app):
             call.dcs_set_state({
                 'health_problems': {},
                 'replication_role': 'master',
+                'willing': None,
                 'host': '127.0.0.1'}),
             ]
     assert app._master_lock_owner == app.my_id
@@ -468,16 +481,14 @@ async def test_replica_tries_to_take_over(app):
         assert sleeper.log == [3]
         assert app._plugins.mock_calls == []
         # takeover attempted
-        states = [(app.my_id, {})]
+        states = [(app.my_id, {'willing': 99.0}), (app.my_id, {'willing': 100.0})]
         plugins.dcs_list_state.side_effect = iter_states = [iter(states)]
-        plugins.willing_replicas.side_effect = iter_willing_replicas = [iter(states)]
-        plugins.best_replicas.side_effect = iter_best_replicas = [iter(states)]
         await sleeper.next()
         assert sleeper.log == [3, 3]
+        print(app._plugins.mock_calls)
         assert app._plugins.mock_calls ==  [
                 call.dcs_list_state(),
-                call.willing_replicas(iter_states[0]),
-                call.best_replicas(iter_willing_replicas[0]),
+                call.best_replicas([('42', {'willing': 99.0}), ('42', {'willing': 100.0})]),
                 call.dcs_lock('master')]
 
 def test_replica_unhealthy(app):
@@ -490,6 +501,7 @@ def test_replica_unhealthy(app):
             call.dcs_set_state({
                 'host': '127.0.0.1',
                 'replication_role': 'replica',
+                'willing': None, # I am not going to participate in master elections
                 'health_problems': {'boom': {'reason': 'It went Boom', 'can_be_replica': False}}}),
             call.pg_replication_role(),
             call.dcs_delete_conn_info(),
@@ -505,6 +517,7 @@ def test_replica_slightly_sick(app):
             call.dcs_set_state({
                 'host': '127.0.0.1',
                 'replication_role': 'replica',
+                'willing': None, # I am not going to participate in master elections
                 'health_problems': {'boom': {'reason': 'It went Boom', 'can_be_replica': True}}}),
             call.pg_replication_role(),
             ]
@@ -534,20 +547,15 @@ async def test_master_unhealthy(app):
         # DCS to find a willing replica
         states = [iter([])]
         plugins.dcs_list_state.side_effect = states
-        plugins.willing_replicas.side_effect = [iter([])]
         await sleeper.next()
-        assert plugins.mock_calls == [
-                call.dcs_list_state(),
-                call.willing_replicas(states[0])]
+        assert plugins.mock_calls == [call.dcs_list_state()]
         # we add a willing replica
-        states = [iter([])]
+        states = [iter([('other', {'willing': 1})])]
         plugins.dcs_list_state.side_effect = states
-        plugins.willing_replicas.side_effect = [iter([('other', {})])]
         plugins.reset_mock()
         await sleeper.next()
         assert plugins.mock_calls == [
                 call.dcs_list_state(),
-                call.willing_replicas(states[0]),
                 call.pg_replication_role(),
                 call.pg_stop(),
                 call.dcs_disconnect()

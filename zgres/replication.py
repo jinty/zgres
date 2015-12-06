@@ -65,19 +65,11 @@ class SelectFurthestAheadReplica:
             yield id, state
 
     @subscribe
-    def willing_replicas(self, states):
-        for id, state in states:
-            if state.get('nofailover', False):
-                continue
-            if state.get('health_problems', True):
-                # if missing, something is wrong, should be an empty dict
-                continue
-            if state.get('replication_role', None) != 'replica':
-                continue
-            if state.get('pg_last_xlog_replay_location', None) is None:
-                # we also need to know the replay location
-                continue
-            yield id, state
+    def veto_takeover(self, state):
+        if state.get('pg_last_xlog_replay_location', None) is None:
+            # we also need to know the replay location
+            return True
+        return False
 
     @subscribe
     def start_monitoring(self):
