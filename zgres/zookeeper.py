@@ -517,6 +517,26 @@ class ZookeeperStorage:
         w = self._zk.DataWatch(path, handler)
         self._watchers[id(w)] = w
 
+    def dcs_get_database_identifiers(self):
+        wanted_info_name = 'database_identifier'
+        dirpath = self._folder_path('static')
+        try:
+            children = self._zk.get_children(dirpath)
+        except kazoo.exceptions.NoNodeError:
+            return {}
+        result = {}
+        for name in children:
+            owner, info_name = name.split('-', 1)
+            if wanted_info_name != info_name:
+                continue
+            try:
+                data, state = self._zk.get(dirpath + '/' + name)
+            except kazoo.exceptions.NoNodeError:
+                continue
+            state = json.loads(data.decode('ascii'))
+            result[owner] = state
+        return result
+
     def dcs_watch_database_identifiers(self, callback):
         name = 'database_identifier'
         def handler(state, key, from_val, to_val):

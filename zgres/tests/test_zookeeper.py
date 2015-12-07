@@ -75,6 +75,16 @@ async def test_functional(deadman_plugin):
     p.databases.assert_has_calls([mock.call(['mygroup'])])
 
 @pytest.fixture
+def storage(request):
+    from ..zookeeper import ZookeeperStorage
+    s = ZookeeperStorage('connection_string', '/path')
+    zk = MyFakeClient()
+    with mock.patch('zgres.zookeeper.KazooClient') as KazooClient:
+        KazooClient.return_value = zk
+        s.dcs_connect()
+    return s
+
+@pytest.fixture
 def deadman_plugin(request):
     from ..deadman import App
     storage = None
@@ -224,3 +234,8 @@ def test_errorlog_after_second_takeover(deadman_plugin):
     assert pluginA2.logger.error.called
     # though the state is still set
     assert sorted(pluginA1.dcs_list_state()) == [('A', dict(server=44))]
+
+def test_storage_get_database_identifiers(storage):
+    assert storage.dcs_get_database_identifiers() == {}
+    storage.dcs_set_database_identifier('db1', '124')
+    assert storage.dcs_get_database_identifiers() == {'db1': 124}
