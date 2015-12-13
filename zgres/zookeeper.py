@@ -374,6 +374,8 @@ class ZookeeperStorage:
     database servers, each representing one logical cluster.
     """
 
+    _zk = None
+
     def __init__(self, connection_string, path):
         self._connection_string = connection_string
         self._path_prefix = path
@@ -390,8 +392,8 @@ class ZookeeperStorage:
         self._zk.start()
 
     def dcs_disconnect(self):
-        # for testing only
         self._zk.stop()
+        self._zk = None
 
     def _dict_watcher(self, group, what, callback):
         def hook(state, key, from_val, to_val):

@@ -108,7 +108,6 @@ def deadman_plugin(request):
         with mock.patch('zgres.zookeeper.KazooClient') as KazooClient:
             KazooClient.return_value = zk
             plugin.initialize()
-        request.addfinalizer(plugin.dcs_disconnect)
         return plugin
     return factory
 
