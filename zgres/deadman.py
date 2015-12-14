@@ -150,6 +150,13 @@ _PLUGIN_API = [
             type='multiple'),
         ]
 
+def willing_replicas(states):
+    for id, state in states:
+        if state.get('willing', None) is None:
+            continue
+        if state['willing'] + 600 < time.time():
+            yield id, state
+
 class App:
 
     _giveup_lock = asyncio.Lock()
@@ -373,12 +380,7 @@ class App:
             self._plugins.master_lock_changed(owner)
 
     def _willing_replicas(self):
-        for id, state in self._plugins.dcs_list_state():
-            if state.get('willing', None) is not None:
-                if state['willing'] + 600 < time.time():
-                    yield id, state
-                else:
-                    logging.warn('Ignoring willing node {} as it has been willing less than 5 minutes'.format(id))
+        return willing_replicas(self._plugins.dcs_list_state())
 
     def _am_i_best_replica(self):
         # Check how I am doing compared to my brethern

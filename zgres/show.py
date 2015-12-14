@@ -3,7 +3,7 @@ import argparse
 from pprint import pformat, pprint
 
 from .config import parse_args
-from .deadman import App
+from .deadman import App, willing_replicas
 
 def show_cli(argv=sys.argv):
     parser = argparse.ArgumentParser(description="Show zgres info")
@@ -21,10 +21,11 @@ def show_cli(argv=sys.argv):
         print('    database identifier: {}'.format(plugins.dcs_get_database_identifier()))
         print('    timeline: {}'.format(pformat(plugins.dcs_get_timeline())))
         all_state = list(plugins.dcs_list_state())
-        willing_replicas = list(plugins.willing_replicas(all_state))
+        # willing_replicas is removed!
+        willing = list(willing_replicas(all_state))
         print('    willing replicas:')
-        pprint(willing_replicas)
-        best_replicas = list(plugins.best_replicas(willing_replicas))
+        pprint(willing)
+        best_replicas = list(plugins.best_replicas(willing))
         print('    best replicas:')
         pprint(best_replicas)
         print('    all conn info:')
