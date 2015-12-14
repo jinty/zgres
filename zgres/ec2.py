@@ -9,6 +9,7 @@ import boto.ec2
 import boto.utils
 import psycopg2
 
+import shlex
 from subprocess import call, check_call, check_output
 
 from .utils import pg_lsn_to_int, backoff_wait
@@ -210,6 +211,10 @@ class Ec2SnapshotBackupPlugin:
             _all_devices_mounted,
             message='Waiting to mount all drives in fstab',
             times=30)
+        postmount = self.app.config['ec2-snapshot'].get('cmd_post_mount', '').strip()
+        if postmount:
+            logging.info('Executing post-mount command: {}'.format(postmount))
+            check_call(shlex.split(postmount))
 
     @subscribe
     def start_monitoring(self):
