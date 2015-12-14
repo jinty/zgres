@@ -352,7 +352,7 @@ def test_plugin_tells_app_to_follow_new_leader(app):
     assert plugins.mock_calls == [
             call.pg_replication_role(),
             call.pg_setup_replication(primary_conninfo={'port': 5432, 'host': '127.0.0.9'}),
-            call.pg_reload()]
+            call.pg_restart()] # must restart for new recovery.conf to take effect
 
 def test_restart_master(app, event_loop):
     plugins = setup_plugins(app,

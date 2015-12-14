@@ -212,6 +212,10 @@ class AptPostgresqlPlugin:
             raise Exception('Failed to start postgresql')
 
     @subscribe
+    def pg_restart(self):
+        check_call(['systemctl', 'restart', self._service()])
+
+    @subscribe
     def pg_reload(self):
         check_call(['systemctl', 'reload', self._service()])
 

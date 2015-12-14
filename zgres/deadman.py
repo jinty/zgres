@@ -111,6 +111,9 @@ _PLUGIN_API = [
         dict(name='pg_reload',
             required=True,
             type='multiple'),
+        dict(name='pg_restart',
+            required=True,
+            type='multiple'),
         # halt: should prevent the existing database from running again.
         # either stop the whole machine, move data directory aside, pg_rewind or prepare for re-bootstrapping as a slave
         dict(name='pg_reset',
@@ -187,7 +190,7 @@ class App:
         logging.info('Now replicating from {}'.format(primary_conninfo))
         assert self._plugins.pg_replication_role() != 'master'
         self._plugins.pg_setup_replication(primary_conninfo=primary_conninfo)
-        self._plugins.pg_reload()
+        self._plugins.pg_restart()
 
     def replica_bootstrap(self):
         self._plugins.pg_stop()
