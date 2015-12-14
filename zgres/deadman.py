@@ -280,6 +280,7 @@ class App:
         self._plugins.start_monitoring()
         self.logger.info('Starting to watch the DCS for events')
         self._plugins.dcs_watch(
+                master_lock=self.master_lock_changed,
                 state=self._plugins.notify_state,
                 conn_info=self._plugins.notify_conn_info)
         self._get_conn_info_from_plugins()

@@ -286,13 +286,14 @@ class ZooKeeperDeadmanPlugin:
         return f
 
     @subscribe
-    def dcs_watch(self, state=None, conn_info=None):
-        self._storage.dcs_watch_lock('master', self._group_name, self.app.master_lock_changed)
-        if state:
+    def dcs_watch(self, master_lock=None, state=None, conn_info=None):
+        if master_lock is not None:
+            self._storage.dcs_watch_lock('master', self._group_name, master_lock)
+        if state is not None:
             self._storage.dcs_watch_state(
                     self._only_my_cluster_filter(state),
                     self._group_name)
-        if conn_info:
+        if conn_info is not None:
             self._storage.dcs_watch_conn_info(
                     self._only_my_cluster_filter(conn_info),
                     self._group_name)
@@ -514,9 +515,9 @@ class ZookeeperStorage:
         def handler(data, stat, event):
             if data is not None:
                 data = data.decode('utf-8')
-            loop.call_soon_threadsafe(callback, data)
+            callback(data)
         path = self._path(group, 'lock', name)
-        w = self._zk.DataWatch(path, handler)
+        w = self._zk.DataWatch(path, partial(loop.call_soon_threadsafe, handler))
         self._watchers[id(w)] = w
 
     def dcs_get_database_identifiers(self):

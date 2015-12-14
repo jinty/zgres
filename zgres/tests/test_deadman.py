@@ -205,7 +205,10 @@ async def test_master_start(app):
             call.pg_start(),
             # start monitoring
             call.start_monitoring(),
-            call.dcs_watch(conn_info=None, state=None),
+            call.dcs_watch(
+                master_lock=app.master_lock_changed,
+                conn_info=None,
+                state=None),
             call.get_conn_info(),
             # set our first state
             call.dcs_set_state({
@@ -284,7 +287,10 @@ def test_replica_start(app):
             call.pg_start(),
             # start monitoring
             call.start_monitoring(),
-            call.dcs_watch(conn_info=None, state=None),
+            call.dcs_watch(
+                master_lock=app.master_lock_changed,
+                conn_info=None,
+                state=None),
             # setup our connection info
             call.get_conn_info(),
             # set our first state
@@ -320,7 +326,10 @@ def test_plugin_subscribe_to_conn_info(app):
             )
     app.initialize()
     assert plugins.dcs_watch.mock_calls ==  [
-            call.dcs_watch(conn_info=plugins.notify_conn_info, state=None)
+            call.dcs_watch(
+                master_lock=app.master_lock_changed,
+                conn_info=plugins.notify_conn_info,
+                state=None)
             ]
 
 def test_plugin_subscribe_to_state(app):
@@ -329,7 +338,10 @@ def test_plugin_subscribe_to_state(app):
             )
     app.initialize()
     assert plugins.dcs_watch.mock_calls ==  [
-            call.dcs_watch(state=plugins.notify_state, conn_info=None)
+            call.dcs_watch(
+                master_lock=app.master_lock_changed,
+                state=plugins.notify_state,
+                conn_info=None)
             ]
 
 def test_plugin_tells_app_to_follow_new_leader(app):

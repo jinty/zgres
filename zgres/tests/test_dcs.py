@@ -115,7 +115,8 @@ def test_info_is_ephemeral(plugin):
 @pytest.mark.asyncio
 async def test_master_lock_notification(plugin):
     pluginA, pluginB = plugin('A'), plugin('B')
-    pluginB.dcs_watch()
+    master_lock_watcher = mock.Mock()
+    pluginB.dcs_watch(master_lock=master_lock_watcher)
     await asyncio.sleep(0.001)
     pluginA.dcs_lock('master') # A
     await asyncio.sleep(0.001)
@@ -133,9 +134,7 @@ async def test_master_lock_notification(plugin):
     await asyncio.sleep(0.001)
     pluginB.dcs_unlock('master') # None
     await asyncio.sleep(0.001)
-    # just a sanity check that these really go through the DCS
-    assert pluginB.app is not pluginA.app
-    assert pluginB.app.master_lock_changed.mock_calls == [
+    assert master_lock_watcher.mock_calls == [
             mock.call(None),
             mock.call('A'),
             mock.call(None),
