@@ -84,6 +84,7 @@ class AptPostgresqlPlugin:
         except FileNotFoundError:
             raise _NoCluster()
         if mtime != self._config_mtime:
+            # the file changed, invalidate our cache
             self._config_cache.clear()
             self._config_mtime = mtime
         value = self._config_cache.get(key, None)
@@ -92,7 +93,7 @@ class AptPostgresqlPlugin:
             value = value.decode('ascii').strip() # encoding unspecified, ascii is safe...
             if value.startswith("'") and value.endswith("'"):
                 value = value[1:-1]
-            self._config_cache.set(key, value.replace("''", "'").replace("\\'", "'"))
+            self._config_cache[key] = value.replace("''", "'").replace("\\'", "'"))
             return self._get_conf_value(key)
         return value
 
