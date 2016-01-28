@@ -39,6 +39,8 @@ class AptPostgresqlPlugin:
         self._systemd_check_key = '{}-systemd'.format(name)
         self._select1_check_key = '{}-select1'.format(name)
         self.logger = logging.getLogger(name)
+        self._config_cache = {}
+        self._config_mtime = None
 
     @property
     def _create_superuser(self):
@@ -76,13 +78,23 @@ class AptPostgresqlPlugin:
         value = check_call(['pg_conftool', self._version, self._cluster_name, 'set', key, value])
 
     def _get_conf_value(self, key):
-        if not os.path.exists(self._config_file()):
+        config_file = self._config_file()
+        try:
+            mtime = os.path.getmtime(config_file)
+        except FileNotFoundError:
             raise _NoCluster()
-        value = check_output(['pg_conftool', '-s', self._version, self._cluster_name, 'show', key])
-        value = value.decode('ascii').strip() # encoding unspecified, ascii is safe...
-        if value.startswith("'") and value.endswith("'"):
-            value = value[1:-1]
-        return value.replace("''", "'").replace("\\'", "'")
+        if mtime != self._config_mtime:
+            self._config_cache.clear()
+            self._config_mtime = mtime
+        value = self._config_cache.get(key, None)
+        if value is None:
+            value = check_output(['pg_conftool', '-s', self._version, self._cluster_name, 'show', key])
+            value = value.decode('ascii').strip() # encoding unspecified, ascii is safe...
+            if value.startswith("'") and value.endswith("'"):
+                value = value[1:-1]
+            self._config_cache.set(key, value.replace("''", "'").replace("\\'", "'"))
+            return self._get_conf_value(key)
+        return value
 
     def _port(self):
         return self._get_conf_value('port')
