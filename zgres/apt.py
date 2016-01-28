@@ -298,13 +298,13 @@ class AptPostgresqlPlugin:
     async def _monitor_systemd(self):
         loop = asyncio.get_event_loop()
         while True:
-            await sleep(1)
             if self._is_active():
                 self.app.healthy(self._systemd_check_key)
             else:
-                await sleep(2)
+                await sleep(10)
                 if not self._is_active():
                     self.app.unhealthy(self._systemd_check_key, 'inactive according to systemd')
+            await sleep(5)
 
     def _can_select1(self):
         try:
