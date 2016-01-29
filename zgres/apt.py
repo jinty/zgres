@@ -93,7 +93,7 @@ class AptPostgresqlPlugin:
             value = value.decode('ascii').strip() # encoding unspecified, ascii is safe...
             if value.startswith("'") and value.endswith("'"):
                 value = value[1:-1]
-            self._config_cache[key] = value.replace("''", "'").replace("\\'", "'"))
+            self._config_cache[key] = value.replace("''", "'").replace("\\'", "'")
             return self._get_conf_value(key)
         return value
 
