@@ -153,7 +153,7 @@ class DictWatch(Mapping):
         old_val = self._state.pop(node, self.MISSING)
         if data is None:
             new_val = self.MISSING
-            del self._child_watchers[node] # allow our watcher to get garbage collected
+            self._child_watchers.pop(node, None) # allow our watcher to get garbage collected
         else:
             new_val = self._deserialize(data)
             self._state[node] = new_val
