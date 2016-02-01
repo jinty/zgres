@@ -62,6 +62,7 @@ def _wait_for_volume_attached(vol):
 class Ec2SnapshotBackupPlugin:
 
     _backing_up = asyncio.Lock()
+    _current_master = None
 
     def __init__(self, name, app):
         self.app = app
@@ -223,12 +224,21 @@ class Ec2SnapshotBackupPlugin:
             backup_interval = int(backup_interval)
             loop = asyncio.get_event_loop()
             loop.call_soon(loop.create_task, self._scheduled_backup(backup_interval))
-    
+
+    @subscribe
+    def master_lock_changed(self, owner):
+        self._current_master = owner
+
+    def _should_backup(self):
+        # perform backup only if I am the current master
+        return self._current_master == self.app.my_id
+
     async def _scheduled_backup(self, interval):
         loop = asyncio.get_event_loop()
         while True:
             await asyncio.sleep(interval)
-            await loop.run_in_executor(None, self.pg_backup)
+            if self._should_backup():
+                await loop.run_in_executor(None, self.pg_backup)
 
 class LocalDevice:
     
