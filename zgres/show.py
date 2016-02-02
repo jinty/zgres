@@ -10,7 +10,7 @@ def indented_pprint(obj):
     for line in pformat(obj).splitlines(True):
         lines.append('    ')
         lines.append(line)
-    return ''.join(lines)
+    print(''.join(lines))
 
 def show_cli(argv=sys.argv):
     parser = argparse.ArgumentParser(description="Show zgres info")
@@ -21,7 +21,7 @@ def show_cli(argv=sys.argv):
         all_state = list(plugins.dcs_list_state())
         my_id = plugins.get_my_id()
         my_state = None
-        for id, state in state:
+        for id, state in all_state:
             if id == my_id:
                 my_state = state
                 break
