@@ -29,7 +29,11 @@ def show_cli(argv=sys.argv):
         # HACK, we only need the plugins, really
         print('My State:')
         print('    ID: {}'.format(my_id))
-        print('    Replication role: {}'.format(my_state.get('replication_role')))
+        if my_state is None:
+            role = 'not registered in zookeeper'
+        else:
+            role = my_state.get('replication_role')
+        print('    Replication role: {}'.format(role))
         print('Cluster:')
         print('    current master: {}'.format(plugins.dcs_get_lock_owner('master')))
         print('    database identifier: {}'.format(plugins.dcs_get_database_identifier()))
