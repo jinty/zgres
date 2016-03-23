@@ -224,29 +224,30 @@ class ZooKeeperDeadmanPlugin:
         self._storage = ZookeeperStorage(
                 self.app.config['zookeeper']['connection_string'],
                 self.app.config['zookeeper']['path'].strip())
+        # we start watching first to get all the state changes
+        self._storage.dcs_watch_connection_state(self._session_state_task)
         self._storage.dcs_connect()
-        self._zk = self._storage.connection
-        self._zk.add_listener(self._session_state_threadsafe)
         self._group_name = self.app.config['zookeeper']['group'].strip()
         if '/' in self._group_name or '-' in self._group_name:
             raise ValueError('cannot have - or / in the group name')
 
-    def _session_state_threadsafe(self, state):
-        self._loop.call_soon_threadsafe(self._loop.create_task, self._session_state(state))
+    def _session_state_task(self, state):
+        self._loop.call_soon(self._loop.create_task, self._session_state(state))
 
     async def _session_state(self, state):
-        unhealthy_key = '{}.no_zookeeper_connection'.format(self.name)
+        self._dcs_state = state
+        unhealthy_key = '{}.no_dcs_connection'.format(self.name)
         # runs in separate thread
-        if state == KazooState.SUSPENDED:
+        if state == 'SUSPENDED':
             # we wait for the tick time before taking action to see if
             # our session gets re-established
             await asyncio.sleep(self.tick_time)
             # we have to assume we are irretrevably lost, minimum session
             # timeout in zookeeper is 2 * tick time so stop postgresql now
             # and let a failover happen
-            if self._zk.state != KazooState.CONNECTED:
-                self.app.unhealthy(unhealthy_key, 'No connection to zookeeper: {}'.format(self._zk.state), can_be_replica=True)
-        elif state == KazooState.LOST:
+            if self._dcs_state != 'CONNECTED':
+                self.app.unhealthy(unhealthy_key, 'No connection to DCS: {}'.format(self._dcs_state), can_be_replica=True)
+        elif state == 'LOST':
             self.app.restart(10)
             raise AssertionError('We should never get here')
         else:
@@ -350,7 +351,7 @@ class ZooKeeperDeadmanPlugin:
     @subscribe
     def dcs_disconnect(self):
         # for testing only
-        self._zk.remove_listener(self._session_state_threadsafe)
+        self._storage.dcs_unwatch_connection_state(self._session_state_task)
         self._storage.dcs_disconnect()
 
 
@@ -364,6 +365,7 @@ class ZookeeperStorage:
     """
 
     _zk = None
+    _connection_state_listeners = None
 
     def __init__(self, connection_string, path):
         self._connection_string = connection_string
@@ -371,14 +373,16 @@ class ZookeeperStorage:
         if not self._path_prefix.endswith('/'):
             self._path_prefix += '/'
         self._watchers = {}
+        self._loop = asyncio.get_event_loop()
 
     @property
     def connection(self):
+        if self._zk is None:
+            self._zk = KazooClient(hosts=self._connection_string)
         return self._zk
 
     def dcs_connect(self):
-        self._zk = KazooClient(hosts=self._connection_string)
-        self._zk.start()
+        self.connection.start()
 
     def dcs_disconnect(self):
         self._zk.stop()
@@ -396,6 +400,41 @@ class ZookeeperStorage:
             return self._dict_watcher(group, what, callback)
         self._watchers[id(watch)] = watch
         return watch
+
+    def _listen_connection(self, state):
+        self._connection_state_changes.append(state)
+        self._loop.call_soon_threadsafe(self._consume_connection_state_changes)
+
+    def _consume_connection_state_changes(self):
+        while True:
+            try:
+                state = self._connection_state_changes.pop(0)
+            except IndexError:
+                break
+            self._connection_state = state
+            for l in self._connection_state_listeners:
+                l(state)
+
+    def dcs_watch_connection_state(self, callback):
+        """Call the callback with the DCS connection state when it changes.
+
+        Possible values are the strings::
+
+            CONNECTED: The connection is working fine.
+            SUSPENDED: The connection is broken, but may be recovered.
+            LOST: The connection has been lost and cannot be recovered.
+        """
+        zk = self.connection
+        if self._connection_state_listeners is None:
+            self._connection_state_listeners = []
+            self._connection_state_changes = []
+            zk.add_listener(self._listen_connection)
+        assert callback not in self._connection_state_listeners
+        self._connection_state_listeners.append(callback)
+
+    def dcs_unwatch_connection_state(self, callback):
+        assert callback in self._connection_state_listeners
+        self._connection_state_listeners.remove(callback)
 
     def dcs_watch_conn_info(self, callback, group=None):
         self._dict_watcher(group, 'conn', callback)
