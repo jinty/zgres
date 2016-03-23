@@ -3,6 +3,7 @@ import logging
 from pkg_resources import iter_entry_points
 
 _missing = object()
+_logger = logging.getLogger('zgres')
 
 def subscribe(func):
     """Mark a method as a zgres subscriber"""
@@ -49,7 +50,7 @@ def _handlers_executor(handlers, event_name):
         return None
     def call(self, *args, **kw):
         result = [(name, h(*args, **kw)) for name, _, h in handlers]
-        logging.debug('event {} called with {}, returning {}'.format(event_name, (args, kw), result))
+        _logger.info('event {} called with {}, returning {}'.format(event_name, (args, kw), result))
         return result
     return call
 
@@ -60,11 +61,11 @@ def _handlers_executor_single(handlers, event_name):
     handler = handlers[0][2]
     def call(self, *args, **kw):
         result = handler(*args, **kw)
-        logging.debug('event {} called with {}, returning {}'.format(event_name, (args, kw), result))
+        _logger.info('event {} called with {}, returning {}'.format(event_name, (args, kw), result))
         return result
     return call
 
-def get_event_handler(setup_plugins, events, logger=logging):
+def get_event_handler(setup_plugins, events, logger=_logger):
     logger.info('Loading Plugins')
     class Handler:
         plugins = dict(setup_plugins)

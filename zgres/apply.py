@@ -25,13 +25,15 @@ with the same configuration.
 import os
 import json
 import sys
-import logging
+from logging import getLogger
 import argparse
 from subprocess import call, check_call
 from collections import abc
 
 from .plugin import subscribe
 import zgres.config
+
+_logger = getLogger('zgres')
 
 #
 # Hook Tools
@@ -103,11 +105,11 @@ def _run_hooks(hooks, cfg_dir):
             continue
         hook = os.path.join(hooks, filename)
         if not os.access(hook, os.X_OK):
-            logging.warn('Not running non-executable hook: {}'.format(hook))
+            _logger.warn('Not running non-executable hook: {}'.format(hook))
             continue
         returncode = _run_one_hook(hook, cfg_dir)
         if returncode != 0:
-            logging.error('Failure when running hook: {}'.format(hook))
+            _logger.error('Failure when running hook: {}'.format(hook))
             failures += 1
     return failures
 
@@ -132,16 +134,19 @@ class Plugin:
 
     @subscribe
     def databases(self, state):
+        _logger.info('New database list {}'.format(state))
         self._state['databases'] = state
         self._write()
 
     @subscribe
     def masters(self, state):
+        _logger.info('New masters list {}'.format(state))
         self._state['masters'] = state
         self._write()
 
     @subscribe
     def conn_info(self, state):
+        _logger.info('New conn_info list {}'.format(state))
         self._state['conn_info'] = state
         self._write()
 
@@ -149,6 +154,7 @@ class Plugin:
         with open('/var/lib/zgres/config/databases.json.tmp', 'w') as f:
             f.write(json.dumps(self._state, sort_keys=True))
         os.rename('/var/lib/zgres/config/databases.json.tmp', '/var/lib/zgres/config/databases.json')
+        _logger.info('Written databases.json, calling zgres-apply')
         check_call('zgres-apply') # apply the configuration to the machine
 
 #

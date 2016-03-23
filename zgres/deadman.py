@@ -176,7 +176,7 @@ class App:
         self.tick_time = config['deadman'].get('tick_time', 2) # float seconds to scale all timeouts
         self._conn_info = {} # TODO: populate from config file
         self._setup_plugins()
-        self.logger = logging
+        self.logger = logging.getLogger('zgres')
 
     def _setup_plugins(self):
         self._plugins = zgres.plugin.get_plugins(
@@ -187,7 +187,7 @@ class App:
 
     def follow(self, primary_conninfo): 
         # Change who we are replicating from
-        logging.info('Now replicating from {}'.format(primary_conninfo))
+        self.logger.info('Now replicating from {}'.format(primary_conninfo))
         assert self._plugins.pg_replication_role() != 'master'
         self._plugins.pg_setup_replication(primary_conninfo=primary_conninfo)
         self._plugins.pg_restart()
@@ -207,7 +207,7 @@ class App:
         if self._plugins.pg_replication_role() != 'replica' or my_database_id != self.database_identifier:
             # destroy our current cluster
             self._plugins.pg_reset()
-            logging.error("Something is seriously wrong: after restoring postgresql was NOT setup as a replica.")
+            self.logger.error("Something is seriously wrong: after restoring postgresql was NOT setup as a replica.")
             return 5
         return 0
 
@@ -434,7 +434,7 @@ class App:
         self.update_state(health_problems=self.health_problems)
         if 'zgres.initialize' in self.health_problems:
             return
-        logging.warn('I am unhelthy: ({}) {}'.format(key, reason))
+        self.logger.warn('I am unhelthy: ({}) {}'.format(key, reason))
         if self._plugins.pg_replication_role() == 'replica':
             if not can_be_replica:
                 self._plugins.dcs_delete_conn_info()
@@ -461,9 +461,9 @@ class App:
         if reason is _missing:
             return # no-op, we were already healthy
         self.update_state(health_problems=self.health_problems)
-        logging.warn('Stopped being unhealthy for this reason: ({}) {}'.format(key, reason))
+        self.logger.warn('Stopped being unhealthy for this reason: ({}) {}'.format(key, reason))
         if self.health_problems:
-            logging.warn('I am still unhelthy for these reasons: {}'.format(self.health_problems))
+            self.logger.warn('I am still unhelthy for these reasons: {}'.format(self.health_problems))
         else:
             # YAY, we're healthy again
             if self._plugins.pg_replication_role() == 'master':
@@ -478,7 +478,7 @@ class App:
 
     def run(self):
         loop = asyncio.get_event_loop()
-        logging.info('Starting')
+        self.logger.info('Starting')
         timeout = self.initialize()
         if timeout is not None:
             self.restart(timeout)
@@ -489,7 +489,7 @@ class App:
 
     def _handle_exception(self, loop, context):
         loop.default_exception_handler(context)
-        logging.error('Unexpected exception, exiting...')
+        self.logger.error('Unexpected exception, exiting...')
         self._exit_code = 1
         loop.call_soon(self.restart, 10)
 
@@ -503,7 +503,7 @@ class App:
             # If we are master, we must stop postgresql to avoid a split brain
             self._plugins.pg_stop()
         self._plugins.dcs_disconnect()
-        logging.info('sleeping for {} ticks, then restarting'.format(timeout))
+        self.logger.info('sleeping for {} ticks, then restarting'.format(timeout))
         self._sleep(timeout) # yes, this blocks everything. that's the point of it!
         self._stop()
 
