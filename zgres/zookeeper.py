@@ -268,18 +268,6 @@ class ZooKeeperDeadmanPlugin:
     def dcs_get_timeline(self):
         return self._storage.dcs_get_timeline(self._group_name)
 
-    def _dict_watcher(self, what, callback):
-        def hook(state, key, from_val, to_val):
-            callback(_get_clusters(state).get(self._group_name, {}))
-        path = self._path(what, name=None)
-        prefix = self._group_name
-        try:
-            watch = DictWatch(self._zk, path, hook, prefix=prefix)
-        except kazoo.exceptions.NoNodeError:
-            self._zk.create(path, makepath=True)
-            return self._dict_watcher(what, callback)
-        return watch
-
     def _only_my_cluster_filter(self, callback):
         def f(value):
             callback(value.get(self._group_name, {}))
