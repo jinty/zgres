@@ -15,6 +15,8 @@ from subprocess import call, check_call, check_output
 from .utils import pg_lsn_to_int, backoff_wait
 from .plugin import subscribe
 
+logger = logging.getLogger('zgres')
+
 class Ec2Plugin:
 
     def __init__(self, name, app):
@@ -216,9 +218,20 @@ class Ec2SnapshotBackupPlugin:
         if postmount:
             logging.info('Executing post-mount command: {}'.format(postmount))
             check_call(shlex.split(postmount))
+        self._set_delete_on_termination('replica')
+
+    def _set_delete_on_termination(self, role):
         # set delete on termination for all devices we just mounted
         # helps prevent costs from spiraling
-        values = ['{}=true'.format(d['device'], d.get('delete_on_termination', 'false')) for d in self._device_options]
+        #
+        # we default to false for master for safety
+        default = {
+                'replica': 'true',
+                'master': 'false'}[role]
+        values = []
+        for d in self._device_options:
+            setting = d.get('delete_on_{}_termination'.format(role), default)
+            values.append('{}={}'.format(d['device'], setting))
         ec2.modify_instance_attribute(
                 self._instance_id,
                 'BlockDeviceMapping',
@@ -234,6 +247,13 @@ class Ec2SnapshotBackupPlugin:
 
     @subscribe
     def master_lock_changed(self, owner):
+        if self._current_master != self.app.my_id and owner == self.app.my_id:
+            # if we become masetr, reset delete_on_termination
+            try:
+                self._set_delete_on_termination('master')
+            except:
+                # but don't stop the takeover if the AWS API is down
+                logger.exception('Failed to set delete_on_termination. Carrying on regardless')
         self._current_master = owner
 
     def _should_backup(self):
