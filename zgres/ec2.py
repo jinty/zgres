@@ -175,12 +175,12 @@ class Ec2SnapshotBackupPlugin:
                 # was never there!
                 continue
             vol = instance_volumes[d]
-            logging.info('unmounting {}'.format(local_device))
+            logger.info('unmounting {}'.format(local_device))
             local_device.umount()
-            logging.info('detaching {}'.format(vol.id))
+            logger.info('detaching {}'.format(vol.id))
             vol.detach()
             _wait_for_volume_available(vol)
-            logging.info('deleting {}'.format(vol.id))
+            logger.info('deleting {}'.format(vol.id))
             vol.delete()
 
     @subscribe
@@ -191,7 +191,7 @@ class Ec2SnapshotBackupPlugin:
         snaps = latest['snapshots']
         to_attach = {}
         self._detach_my_devices(conn)
-        logging.info('Creating volumes for {}'.format(list(self._device_options)))
+        logger.info('Creating volumes for {}'.format(list(self._device_options)))
         for d in self._device_options:
             snap = snaps[d['device']]
             vol = snap.create_volume(
@@ -203,20 +203,20 @@ class Ec2SnapshotBackupPlugin:
         # wait for all the volumes to be available
         for vol in to_attach.values():
             _wait_for_volume_available(vol)
-        logging.info('Attaching volumes')
+        logger.info('Attaching volumes')
         # attach and wait for the volumes to be attached
         for d in self._device_options:
             to_attach[d['device']].attach(self._instance_id, d['device'])
         for vol in to_attach.values():
             _wait_for_volume_attached(vol)
-        logging.info('Mounting everything')
+        logger.info('Mounting everything')
         backoff_wait(
             _all_devices_mounted,
             message='Waiting to mount all drives in fstab',
             times=30)
         postmount = self.app.config['ec2-snapshot'].get('cmd_post_mount', '').strip()
         if postmount:
-            logging.info('Executing post-mount command: {}'.format(postmount))
+            logger.info('Executing post-mount command: {}'.format(postmount))
             check_call(shlex.split(postmount))
         self._set_delete_on_termination('replica')
 
