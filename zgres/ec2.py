@@ -216,6 +216,13 @@ class Ec2SnapshotBackupPlugin:
         if postmount:
             logging.info('Executing post-mount command: {}'.format(postmount))
             check_call(shlex.split(postmount))
+        # set delete on termination for all devices we just mounted
+        # helps prevent costs from spiraling
+        values = ['{}=true'.format(d['device'], d.get('delete_on_termination', 'false')) for d in self._device_options]
+        ec2.modify_instance_attribute(
+                self._instance_id,
+                'BlockDeviceMapping',
+                values)
 
     @subscribe
     def start_monitoring(self):
