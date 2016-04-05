@@ -384,6 +384,10 @@ recovery_target_timeline = 'latest'
             config += "\nprimary_conninfo = '{}'".format(' '.join(parts))
         if restore_command:
             config += "\nrestore_command = '{}'".format(restore_command)
-        with open(os.path.join(self._data_dir(), 'recovery.conf'), 'w') as f:
+        recovery_conf = os.path.join(self._data_dir(), 'recovery.conf.new')
+        recovery_conf_new = recovery_conf + '.zgres_new'
+        with open(recovery_conf_new, 'w') as f:
             f.write(config)
+        shutil.chown(recovery_conf_new, user='postgres', group='postgres')
+        os.rename(recovery_conf_new, recovery_conf)
         self._set_config_values('replica.')
