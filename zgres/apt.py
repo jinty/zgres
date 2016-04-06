@@ -384,7 +384,7 @@ recovery_target_timeline = 'latest'
             config += "\nprimary_conninfo = '{}'".format(' '.join(parts))
         if restore_command:
             config += "\nrestore_command = '{}'".format(restore_command)
-        recovery_conf = os.path.join(self._data_dir(), 'recovery.conf.new')
+        recovery_conf = os.path.join(self._data_dir(), 'recovery.conf')
         recovery_conf_new = recovery_conf + '.zgres_new'
         with open(recovery_conf_new, 'w') as f:
             f.write(config)
