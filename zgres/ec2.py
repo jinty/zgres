@@ -218,9 +218,9 @@ class Ec2SnapshotBackupPlugin:
         if postmount:
             logger.info('Executing post-mount command: {}'.format(postmount))
             check_call(shlex.split(postmount))
-        self._set_delete_on_termination('replica')
+        self._set_delete_on_termination(conn, 'replica')
 
-    def _set_delete_on_termination(self, role):
+    def _set_delete_on_termination(self, conn, role):
         # set delete on termination for all devices we just mounted
         # helps prevent costs from spiraling
         #
@@ -250,7 +250,8 @@ class Ec2SnapshotBackupPlugin:
         if self._current_master != self.app.my_id and owner == self.app.my_id:
             # if we become masetr, reset delete_on_termination
             try:
-                self._set_delete_on_termination('master')
+                conn = self._conn()
+                self._set_delete_on_termination(conn, 'master')
             except:
                 # but don't stop the takeover if the AWS API is down
                 logger.exception('Failed to set delete_on_termination. Carrying on regardless')
