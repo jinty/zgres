@@ -88,13 +88,17 @@ class SelectFurthestAheadReplica:
         return results[0]
 
     async def _set_replication_status(self):
+        args = None
         while True:
             await asyncio.sleep(1)
-            args = self.app.pg_connect_info()
             try:
+                if args is None:
+                    # cache connection info till connection fails once
+                    args = self.app.pg_connect_info()
                 result = self._get_location(args)
             except psycopg2.OperationalError as e:
                 logging.warn('Could not get wal location from postgresql: {}'.format(e))
                 result = None
+                args = None
             self.app.update_state(
                     pg_last_xlog_replay_location=result)
