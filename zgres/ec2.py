@@ -233,7 +233,7 @@ class Ec2SnapshotBackupPlugin:
         for d in self._device_options:
             setting = d.get('delete_on_{}_termination'.format(role), default)
             values.append('{}={}'.format(d['device'], setting))
-        ec2.modify_instance_attribute(
+        conn.modify_instance_attribute(
                 self._instance_id,
                 'BlockDeviceMapping',
                 values)
