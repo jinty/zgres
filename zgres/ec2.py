@@ -214,10 +214,11 @@ class Ec2SnapshotBackupPlugin:
             _all_devices_mounted,
             message='Waiting to mount all drives in fstab',
             times=30)
-        postmount = self.app.config['ec2-snapshot'].get('cmd_post_mount', '').strip()
-        if postmount:
-            logger.info('Executing post-mount command: {}'.format(postmount))
-            check_call(shlex.split(postmount))
+        postmount = self.app.config['ec2-snapshot'].get('cmd_post_mount', '').splitlines()
+        postmount = [i.strip() for i in postmount if i.strip()]
+        for cmd in postmount:
+            logger.info('Executing post-mount command: {}'.format(cmd))
+            check_call(shlex.split(cmd))
         self._set_delete_on_termination(conn, 'replica')
 
     def _set_delete_on_termination(self, conn, role):
