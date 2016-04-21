@@ -188,7 +188,9 @@ class ZooKeeperSource:
     def start_watching(self, state=None, conn_info=None, masters=None, databases=None):
         self._storage = ZookeeperStorage(
                 self.app.config['zookeeper']['connection_string'],
-                self.app.config['zookeeper']['path'].strip())
+                self.app.config['zookeeper']['path'].strip(),
+                timeout=float(self.app.config['zookeeper'].get('timeout', '10').strip()),
+                )
         self._storage.dcs_connect()
         if state is not None:
             self._storage.dcs_watch_state(state)
@@ -223,7 +225,9 @@ class ZooKeeperDeadmanPlugin:
         self._loop = asyncio.get_event_loop()
         self._storage = ZookeeperStorage(
                 self.app.config['zookeeper']['connection_string'],
-                self.app.config['zookeeper']['path'].strip())
+                self.app.config['zookeeper']['path'].strip(),
+                timeout=float(self.app.config['zookeeper'].get('timeout', '10').strip()),
+                )
         # we start watching first to get all the state changes
         self._storage.dcs_watch_connection_state(self._session_state_task)
         self._storage.dcs_connect()
@@ -367,9 +371,10 @@ class ZookeeperStorage:
     _zk = None
     _connection_state_listeners = None
 
-    def __init__(self, connection_string, path):
+    def __init__(self, connection_string, path, timeout=10.0):
         self._connection_string = connection_string
         self._path_prefix = path
+        self._timeout = timeout
         if not self._path_prefix.endswith('/'):
             self._path_prefix += '/'
         self._watchers = {}
@@ -378,7 +383,9 @@ class ZookeeperStorage:
     @property
     def connection(self):
         if self._zk is None:
-            self._zk = KazooClient(hosts=self._connection_string)
+            self._zk = KazooClient(
+                    hosts=self._connection_string,
+                    timeout=self._timeout)
         return self._zk
 
     def dcs_connect(self):
