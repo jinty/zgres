@@ -29,6 +29,7 @@ from logging import getLogger
 import argparse
 from subprocess import call, check_call
 from collections import abc
+import asyncio
 
 from .plugin import subscribe
 import zgres.config
@@ -125,6 +126,8 @@ def _apply(_prefix=_DEFAULT_PREFIX):
 
 class Plugin:
 
+    _write_timer = None
+
     def __init__(self, name, app):
         self._state = {
                 'databases': [],
@@ -151,6 +154,13 @@ class Plugin:
         self._write()
 
     def _write(self):
+        if self._write_timer is None:
+            loop = asyncio.get_event_loop()
+            # limit the writes to our list of databases to 1 per second
+            self._write_timer = loop.call_later(1, self._debounced_write)
+
+    def _debounced_write(self):
+        self._write_timer = None
         with open('/var/lib/zgres/config/databases.json.tmp', 'w') as f:
             f.write(json.dumps(self._state, sort_keys=True))
         os.rename('/var/lib/zgres/config/databases.json.tmp', '/var/lib/zgres/config/databases.json')
