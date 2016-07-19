@@ -145,7 +145,7 @@ async def test_session_lost(deadman_plugin):
     plugin._storage._zk._fire_state_change(KazooState.LOST)
     await asyncio.sleep(0.001)
     assert plugin.app.mock_calls == [
-            mock.call.restart(10)
+            mock.call.restart(0)
             ]
 
 @pytest.mark.asyncio

@@ -241,7 +241,10 @@ class ZooKeeperDeadmanPlugin:
     async def _session_state(self, state):
         self.logger.warn('zookeeper connection state: {}'.format(state))
         if state == 'LOST':
-            self.app.restart(10)
+            # we have lost our zookeeper connection. Shut down and restart to
+            # try get it back.
+            # NOTE: this will shut down postgresql if we are master.
+            self.app.restart(0)
             raise AssertionError('We should never get here')
 
     @subscribe

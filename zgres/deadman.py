@@ -503,8 +503,9 @@ class App:
             # If we are master, we must stop postgresql to avoid a split brain
             self._plugins.pg_stop()
         self._plugins.dcs_disconnect()
-        self.logger.info('sleeping for {} ticks, then restarting'.format(timeout))
-        self._sleep(timeout) # yes, this blocks everything. that's the point of it!
+        if timeout:
+            self.logger.info('sleeping for {} ticks, then restarting'.format(timeout))
+            self._sleep(timeout) # yes, this blocks everything. that's the point of it!
         self._stop()
 
     def pg_connect_info(self):
