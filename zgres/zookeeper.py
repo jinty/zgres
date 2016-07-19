@@ -340,7 +340,7 @@ class ZooKeeperDeadmanPlugin:
 
     @subscribe
     def dcs_disconnect(self):
-        # for testing only
+        self._storage.connection.remove_listener(self._session_state_handler)
         self._storage.dcs_disconnect()
 
 

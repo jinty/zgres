@@ -113,6 +113,14 @@ def deadman_plugin(request):
     return factory
 
 @pytest.mark.asyncio
+async def test_disconnect_should_not_restart(deadman_plugin):
+    plugin = deadman_plugin()
+    await asyncio.sleep(0.001)
+    plugin.dcs_disconnect()
+    await asyncio.sleep(0.001)
+    assert plugin.app.mock_calls == [] # restart was not called
+
+@pytest.mark.asyncio
 async def test_session_suspended(deadman_plugin):
     plugin = deadman_plugin()
     await asyncio.sleep(0.001)
