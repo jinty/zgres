@@ -213,6 +213,8 @@ def _get_clusters(in_dict):
 
 class ZooKeeperDeadmanPlugin:
 
+    _dcs_state = None
+
     def __init__(self, name, app):
         self.name = name
         self.app = app
@@ -229,23 +231,17 @@ class ZooKeeperDeadmanPlugin:
                 timeout=float(self.app.config['zookeeper'].get('timeout', '10').strip()),
                 )
         # we start watching first to get all the state changes
-        self._storage.dcs_watch_connection_state(self._session_state_task)
+        self._storage.connection.add_listener(self._session_state_handler)
         self._storage.dcs_connect()
         self._group_name = self.app.config['zookeeper']['group'].strip()
         if '/' in self._group_name or '-' in self._group_name:
             raise ValueError('cannot have - or / in the group name')
 
-    def _session_state_task(self, state):
-        self._loop.call_soon(self._loop.create_task, self._session_state(state))
-
-    async def _session_state(self, state):
+    def _session_state_handler(self, state):
+        self._dcs_state = state
         self.logger.warn('zookeeper connection state: {}'.format(state))
         if state == 'LOST':
-            # we have lost our zookeeper connection. Shut down and restart to
-            # try get it back.
-            # NOTE: this will shut down postgresql if we are master.
-            self.app.restart(0)
-            raise AssertionError('We should never get here')
+            self._loop.call_soon_threadsafe(self.app.restart, 0)
 
     @subscribe
     def dcs_set_database_identifier(self, database_id):
@@ -345,7 +341,6 @@ class ZooKeeperDeadmanPlugin:
     @subscribe
     def dcs_disconnect(self):
         # for testing only
-        self._storage.dcs_unwatch_connection_state(self._session_state_task)
         self._storage.dcs_disconnect()
 
 
@@ -359,7 +354,6 @@ class ZookeeperStorage:
     """
 
     _zk = None
-    _connection_state_listeners = None
 
     def __init__(self, connection_string, path, timeout=10.0):
         self._connection_string = connection_string
@@ -401,37 +395,6 @@ class ZookeeperStorage:
     def _listen_connection(self, state):
         self._connection_state_changes.append(state)
         self._loop.call_soon_threadsafe(self._consume_connection_state_changes)
-
-    def _consume_connection_state_changes(self):
-        while True:
-            try:
-                state = self._connection_state_changes.pop(0)
-            except IndexError:
-                break
-            self._connection_state = state
-            for l in self._connection_state_listeners:
-                l(state)
-
-    def dcs_watch_connection_state(self, callback):
-        """Call the callback with the DCS connection state when it changes.
-
-        Possible values are the strings::
-
-            CONNECTED: The connection is working fine.
-            SUSPENDED: The connection is broken, but may be recovered.
-            LOST: The connection has been lost and cannot be recovered.
-        """
-        zk = self.connection
-        if self._connection_state_listeners is None:
-            self._connection_state_listeners = []
-            self._connection_state_changes = []
-            zk.add_listener(self._listen_connection)
-        assert callback not in self._connection_state_listeners
-        self._connection_state_listeners.append(callback)
-
-    def dcs_unwatch_connection_state(self, callback):
-        assert callback in self._connection_state_listeners
-        self._connection_state_listeners.remove(callback)
 
     def dcs_watch_conn_info(self, callback, group=None):
         self._dict_watcher(group, 'conn', callback)

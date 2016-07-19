@@ -92,6 +92,7 @@ def deadman_plugin(request):
         nonlocal storage
         app = mock.Mock(spec_set=App)
         app.my_id = my_id
+        app.restart._is_coroutine = False
         app.config = dict(
                 zookeeper=dict(
                     connection_string='localhost:1234',
@@ -120,6 +121,7 @@ async def test_session_suspended(deadman_plugin):
     plugin._storage._zk._fire_state_change(KazooState.SUSPENDED)
     await asyncio.sleep(0.001)
     plugin.logger.warn.assert_called_once_with('zookeeper connection state: SUSPENDED')
+    assert plugin._dcs_state == 'SUSPENDED'
     assert plugin.app.mock_calls == []
 
 @pytest.mark.asyncio
@@ -135,6 +137,7 @@ async def test_session_suspended_but_reconnects(deadman_plugin):
             mock.call('zookeeper connection state: SUSPENDED'),
             mock.call('zookeeper connection state: CONNECTED'),
             ]
+    assert plugin._dcs_state == 'CONNECTED'
     assert plugin.app.mock_calls == []
 
 @pytest.mark.asyncio
@@ -144,6 +147,7 @@ async def test_session_lost(deadman_plugin):
     plugin.app.reset_mock()
     plugin._storage._zk._fire_state_change(KazooState.LOST)
     await asyncio.sleep(0.001)
+    assert plugin._dcs_state == 'LOST'
     assert plugin.app.mock_calls == [
             mock.call.restart(0)
             ]
