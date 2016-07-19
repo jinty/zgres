@@ -239,23 +239,10 @@ class ZooKeeperDeadmanPlugin:
         self._loop.call_soon(self._loop.create_task, self._session_state(state))
 
     async def _session_state(self, state):
-        self._dcs_state = state
-        unhealthy_key = '{}.no_dcs_connection'.format(self.name)
-        # runs in separate thread
-        if state == 'SUSPENDED':
-            # we wait for the tick time before taking action to see if
-            # our session gets re-established
-            await asyncio.sleep(self.tick_time)
-            # we have to assume we are irretrevably lost, minimum session
-            # timeout in zookeeper is 2 * tick time so stop postgresql now
-            # and let a failover happen
-            if self._dcs_state != 'CONNECTED':
-                self.app.unhealthy(unhealthy_key, 'No connection to DCS: {}'.format(self._dcs_state), can_be_replica=True)
-        elif state == 'LOST':
+        self.logger.warn('zookeeper connection state: {}'.format(state))
+        if state == 'LOST':
             self.app.restart(10)
             raise AssertionError('We should never get here')
-        else:
-            self.app.healthy(unhealthy_key)
 
     @subscribe
     def dcs_set_database_identifier(self, database_id):
