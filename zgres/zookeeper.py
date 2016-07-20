@@ -6,7 +6,7 @@ from functools import partial
 from collections.abc import Mapping
 
 import kazoo.exceptions
-from kazoo.client import KazooClient, KazooState
+from kazoo.client import KazooClient, KazooState, KazooRetry
 
 from .plugin import subscribe
 
@@ -221,6 +221,24 @@ class ZooKeeperDeadmanPlugin:
         self.tick_time = app.tick_time # seconds: this should match the zookeeper server tick time (normally specified in milliseconds)
         self.logger = logging
         self._takeovers = {}
+        self._kazoo_retry = KazooRetry(
+                max_tries=10,
+                deadline=60,
+                ignore_expire=False,
+                )
+
+    def _retry(self, method, *args, **kw):
+        cmd = getattr(self._storage, method)
+        try:
+            return self._kazoo_retry(cmd, *args, **kw)
+        except kazoo.exceptions.SessionExpiredError:
+            # the session has expired, we are going to restart anyway when the LOST state is set
+            # however the exceptionhandler waits some time before restarting
+            #
+            # we want to restart immediately so call restart(0) first
+            loop = asyncio.get_event_loop()
+            loop.call_soon(self.app.restart, 0)
+            raise
 
     @subscribe
     def initialize(self):
@@ -245,19 +263,19 @@ class ZooKeeperDeadmanPlugin:
 
     @subscribe
     def dcs_set_database_identifier(self, database_id):
-        return self._storage.dcs_set_database_identifier(self._group_name, database_id)
+        return self._retry('dcs_set_database_identifier', self._group_name, database_id)
 
     @subscribe
     def dcs_get_database_identifier(self):
-        return self._storage.dcs_get_database_identifier(self._group_name)
+        return self._retry('dcs_get_database_identifier', self._group_name)
 
     @subscribe
     def dcs_set_timeline(self, timeline):
-        return self._storage.dcs_set_timeline(self._group_name, timeline)
+        return self._retry('dcs_set_timeline', self._group_name, timeline)
 
     @subscribe
     def dcs_get_timeline(self):
-        return self._storage.dcs_get_timeline(self._group_name)
+        return self._retry('dcs_get_timeline', self._group_name)
 
     def _only_my_cluster_filter(self, callback):
         def f(value):
@@ -279,11 +297,11 @@ class ZooKeeperDeadmanPlugin:
 
     @subscribe
     def dcs_get_lock_owner(self, name):
-        return self._storage.dcs_get_lock_owner(self._group_name, name)
+        return self._retry('dcs_get_lock_owner', self._group_name, name)
 
     @subscribe
     def dcs_lock(self, name):
-        result = self._storage.dcs_lock(
+        result = self._retry('dcs_lock', 
                 self._group_name,
                 name,
                 self.app.my_id)
@@ -298,7 +316,7 @@ class ZooKeeperDeadmanPlugin:
 
     @subscribe
     def dcs_unlock(self, name):
-        self._storage.dcs_unlock(self._group_name, name, self.app.my_id)
+        self._retry('dcs_unlock', self._group_name, name, self.app.my_id)
 
     def _log_takeover(self, path):
         if self._takeovers.get(path, False):
@@ -314,27 +332,27 @@ class ZooKeeperDeadmanPlugin:
 
     @subscribe
     def dcs_set_conn_info(self, data):
-        how = self._storage.dcs_set_conn_info(self._group_name, self.app.my_id, data)
+        how = self._retry('dcs_set_conn_info', self._group_name, self.app.my_id, data)
         if how == 'takeover':
             self._log_takeover('conn/{}/{}'.format(self._group_name, self.app.my_id))
 
     @subscribe
     def dcs_set_state(self, data):
-        how = self._storage.dcs_set_state(self._group_name, self.app.my_id, data)
+        how = self._retry('dcs_set_state', self._group_name, self.app.my_id, data)
         if how == 'takeover':
             self._log_takeover('state/{}/{}'.format(self._group_name, self.app.my_id))
 
     @subscribe
     def dcs_list_conn_info(self):
-        return self._storage.dcs_list_conn_info(group=self._group_name)
+        return self._retry('dcs_list_conn_info', group=self._group_name)
 
     @subscribe
     def dcs_list_state(self):
-        return self._storage.dcs_list_state(group=self._group_name)
+        return self._retry('dcs_list_state', group=self._group_name)
 
     @subscribe
     def dcs_delete_conn_info(self):
-        self._storage.dcs_delete_conn_info(
+        self._retry('dcs_delete_conn_info',
                 self._group_name,
                 self.app.my_id)
 

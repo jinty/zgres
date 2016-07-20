@@ -6,6 +6,7 @@ import asyncio
 import pytest
 from zake.fake_client import FakeClient
 from kazoo.client import KazooState
+import kazoo.exceptions
 
 from zgres import sync
 from . import FakeSleeper
@@ -226,3 +227,77 @@ def test_storage_get_database_identifiers(storage):
     assert storage.dcs_get_database_identifiers() == {}
     storage.dcs_set_database_identifier('db1', '124')
     assert storage.dcs_get_database_identifiers() == {'db1': 124}
+
+def mock_verify(plugin, side_effect):
+    # cause the verify() function to fail in zake, thus all api calls error
+    verify = mock.Mock()
+    verify.side_effect = side_effect
+    plugin._storage.connection.verify = verify
+    plugin._kazoo_retry.sleep_func = lambda x: None # speed up tests by not sleeping
+    return verify
+
+@pytest.mark.asyncio
+async def test_retry_on_connection_loss(deadman_plugin):
+    # connection loss is a temporary exception which seems to happen after a re-connection
+    # (but not session expiration)in zookeeper. We just retry that till it works.
+    plugin = deadman_plugin('A')
+    verify = mock_verify(plugin, [
+        kazoo.exceptions.ConnectionLoss(),
+        kazoo.exceptions.ConnectionLoss(),
+        kazoo.exceptions.ConnectionLoss(),
+        kazoo.exceptions.ConnectionLoss(),
+        kazoo.exceptions.ConnectionLoss(),
+        None,
+        None])
+    # set state from both plugins
+    plugin.dcs_set_state(dict(name='A'))
+    await asyncio.sleep(0.001)
+    assert plugin.app.mock_calls == []
+    assert verify.call_count > 4
+
+@pytest.mark.asyncio
+async def test_retry_NO_retry_on_session_expired(deadman_plugin):
+    # connection loss is a temporary exception which seems to happen after a re-connection
+    # (but not session expiration)in zookeeper. We just retry that till it works.
+    plugin = deadman_plugin('A')
+    verify = mock_verify(plugin, [kazoo.exceptions.SessionExpiredError()])
+    # set state from both plugins
+    with pytest.raises(kazoo.exceptions.SessionExpiredError):
+        plugin.dcs_set_state(dict(name='A'))
+    await asyncio.sleep(0.001)
+    assert plugin.app.mock_calls == [
+            mock.call.restart(0)
+            ]
+
+@pytest.mark.asyncio
+async def test_retry_with_random_exception(deadman_plugin):
+    # connection loss is a temporary exception which seems to happen after a re-connection
+    # (but not session expiration)in zookeeper. We just retry that till it works.
+    plugin = deadman_plugin('A')
+    class MyException(Exception):
+        pass
+    verify = mock_verify(plugin, [MyException()])
+    # set state from both plugins
+    with pytest.raises(MyException):
+        plugin.dcs_set_state(dict(name='A'))
+    await asyncio.sleep(0.001)
+    assert plugin.app.mock_calls == []
+
+import time as ttt
+
+@pytest.mark.asyncio
+async def test_retry_deadline(deadman_plugin):
+    with mock.patch('time.time') as time:
+        plugin = deadman_plugin('A')
+        time.return_value = 120
+        print(ttt.time(), time())
+        def my_side_effect():
+            time.return_value = 240
+            raise kazoo.exceptions.ConnectionLoss()
+        verify = mock_verify(plugin, my_side_effect)
+        # set state from both plugins
+        with pytest.raises(kazoo.retry.RetryFailedError) as e:
+            plugin.dcs_set_state(dict(name='A'))
+    assert e.value.args[0] == "Exceeded retry deadline"
+    await asyncio.sleep(0.001)
+    assert plugin.app.mock_calls == []
