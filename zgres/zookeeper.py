@@ -633,10 +633,10 @@ class ZookeeperStorage:
             yield owner, state
 
     def dcs_list_conn_info(self, group=None):
-        return self._get_all_info(group, 'conn')
+        return list(self._get_all_info(group, 'conn'))
 
     def dcs_list_state(self, group=None):
-        return self._get_all_info(group, 'state')
+        return list(self._get_all_info(group, 'state'))
 
     def dcs_delete_conn_info(self, group, owner):
         path = self._path(group, 'conn', owner)
