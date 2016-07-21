@@ -401,6 +401,6 @@ recovery_target_timeline = 'latest'
             if real_role == 'master' and state_role == 'replica':
                 self.logger.error('Did you promote postgres manually? zgres thinks its a replica but postgres is actually a master. Restarting to try get the master lock')
                 self.restart(0)
-            if real_role == 'master' and self.app.have_master_lock():
+            if real_role == 'master' and self.app.have_master_lock:
                 self.logger.error('Postgresql is a master, but we DONT have the lock. This should never happen. oh well, restarting to try make the best of it')
                 self.restart(0)
