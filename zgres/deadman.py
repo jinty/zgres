@@ -337,7 +337,7 @@ class App:
         changed = self._update_auto_state() or changed
         if changed and 'zgres.initialize' not in self.health_problems:
             # don't update state in the DCS till we are finished updating
-            self._plugins.dcs_set_state(self._state)
+            self._plugins.dcs_set_state(self._state.copy())
 
     def _update_auto_state(self):
         """Update any keys in state which the deadman App itself calculates"""
