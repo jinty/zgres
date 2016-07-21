@@ -272,7 +272,7 @@ class App:
         elif replication_role == 'master':
             self.logger.info('I am NOT a replica, trying to take over as master')
             if self._plugins.dcs_lock('master'):
-                self.logger.info('Got master lock, proceedint with startup')
+                self.logger.info('Got master lock, proceeding with startup')
             else:
                 owner = self._plugins.dcs_get_lock_owner('master')
                 self.logger.info('Failed to get master lock ({} has it), checking if a new master is running yet'.format(owner))
