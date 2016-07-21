@@ -395,7 +395,7 @@ recovery_target_timeline = 'latest'
 
     async def _monitor_replication_role(self):
         while True:
-            await self._async_sleep(5)
+            await sleep(5)
             real_role = self.pg_replication_role()
             state_role = self.app.replication_role
             if real_role == 'master' and state_role == 'replica':
