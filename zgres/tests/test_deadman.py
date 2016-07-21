@@ -462,6 +462,11 @@ async def test_replica_reaction_to_master_lock_change(app):
     app.master_lock_changed(app.my_id)
     assert app._plugins.mock_calls ==  [
             call.pg_replication_role(),
+            call.dcs_set_state({
+                'replication_role': 'taking-over',
+                'willing': None,
+                'health_problems': {},
+                'host': '127.0.0.1'}),
             call.pg_stop_replication(),
             call.pg_replication_role(),
             call.pg_get_timeline(),

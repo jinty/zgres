@@ -168,6 +168,7 @@ class App:
     database_identifier = None
     tick_time = None
     _exit_code = 0
+    _master_lock_owner = None
 
     def __init__(self, config):
         self.health_problems = {}
@@ -177,6 +178,14 @@ class App:
         self._conn_info = {} # TODO: populate from config file
         self._setup_plugins()
         self.logger = logging.getLogger('zgres')
+
+    @property
+    def replication_role(self):
+        return self._state.get('replication_role', None)
+
+    @property
+    def have_master_lock(self):
+        return self._master_lock_owner == self.my_id
 
     def _setup_plugins(self):
         self._plugins = zgres.plugin.get_plugins(
@@ -366,6 +375,7 @@ class App:
         if owner == self.my_id:
             # I have the master lock, if I am replicating, stop.
             if self._plugins.pg_replication_role() == 'replica':
+                self.update_state(replication_role='taking-over')
                 self._plugins.pg_stop_replication()
                 new_role = self._plugins.pg_replication_role()
                 if new_role != 'master':
