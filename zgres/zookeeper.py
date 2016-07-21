@@ -1,5 +1,6 @@
 import json
 import asyncio
+from asyncio import sleep
 import queue
 import logging
 from functools import partial
@@ -258,8 +259,19 @@ class ZooKeeperDeadmanPlugin:
     def _session_state_handler(self, state):
         self._dcs_state = state
         self.logger.warn('zookeeper connection state: {}'.format(state))
-        if state == 'LOST':
+        if state != KazooState.CONNECTED:
+            self._loop.call_soon_threadsafe(self._loop.create_task, self._check_state())
+        if state == KazooState.LOST:
             self._loop.call_soon_threadsafe(self.app.restart, 0)
+
+    async def _check_state(self):
+        for i in range(20):
+            await sleep(1)
+            if self._dcs_state == KazooState.CONNECTED:
+                return
+        # we could not re-connect within 4 seconds,
+        # so we assume all is lost and we should restart
+        self._loop.call_soon(self.app.restart, 0)
 
     @subscribe
     def dcs_set_database_identifier(self, database_id):

@@ -1,5 +1,6 @@
 from configparser import ConfigParser
 from unittest import mock
+import time
 import json
 import asyncio
 
@@ -134,20 +135,54 @@ async def test_session_suspended(deadman_plugin):
     assert plugin.app.mock_calls == []
 
 @pytest.mark.asyncio
-async def test_session_suspended_but_reconnects(deadman_plugin):
-    plugin = deadman_plugin()
-    await asyncio.sleep(0.001)
-    # suspend the connection
-    plugin.logger.warn = mock.Mock()
-    plugin._storage._zk._fire_state_change(KazooState.SUSPENDED)
-    plugin._storage._zk._fire_state_change(KazooState.CONNECTED)
-    await asyncio.sleep(0.001)
-    assert plugin.logger.warn.mock_calls == [
-            mock.call('zookeeper connection state: SUSPENDED'),
-            mock.call('zookeeper connection state: CONNECTED'),
-            ]
-    assert plugin._dcs_state == 'CONNECTED'
-    assert plugin.app.mock_calls == []
+async def test_session_suspended_but_reconnect_in_5_seconds(deadman_plugin):
+    with mock.patch('zgres.zookeeper.sleep') as sleep:
+        # yeah, tests with firewalls show that this really does happen
+        plugin = deadman_plugin()
+        await asyncio.sleep(0.001)
+        sleeper = FakeSleeper(max_loops=1000)
+        sleep.side_effect = sleeper
+        # suspend the connection
+        plugin.logger.warn = mock.Mock()
+        plugin._storage._zk._fire_state_change(KazooState.SUSPENDED)
+        await sleeper.next()
+        await sleeper.next()
+        await sleeper.next()
+        await sleeper.next()
+        ntasks = len(asyncio.Task.all_tasks())
+        plugin._storage._zk._fire_state_change(KazooState.CONNECTED)
+        time.sleep(0.001)
+        await asyncio.sleep(0.001)
+        assert ntasks - len(asyncio.Task.all_tasks()) == 1 # the _check_state task finished 
+        assert plugin.app.mock_calls == []
+        assert plugin.logger.warn.mock_calls == [
+                mock.call('zookeeper connection state: SUSPENDED'),
+                mock.call('zookeeper connection state: CONNECTED'),
+                ]
+        assert plugin._dcs_state == KazooState.CONNECTED
+
+@pytest.mark.asyncio
+async def test_session_suspended_but_never_reconnects_or_is_lost(deadman_plugin):
+    with mock.patch('zgres.zookeeper.sleep') as sleep:
+        # yeah, tests with firewalls show that this really does happen
+        plugin = deadman_plugin()
+        await asyncio.sleep(0.001)
+        sleeper = FakeSleeper(max_loops=25)
+        sleep.side_effect = sleeper
+        def finish(timeout):
+            sleeper.finish()
+        plugin.app.restart.side_effect = finish
+        # suspend the connection
+        plugin.logger.warn = mock.Mock()
+        plugin._storage._zk._fire_state_change(KazooState.SUSPENDED)
+        await sleeper.wait()
+        assert plugin.app.mock_calls == [
+                mock.call.restart(0)
+                ]
+        assert plugin.logger.warn.mock_calls == [
+                mock.call('zookeeper connection state: SUSPENDED'),
+                ]
+        assert plugin._dcs_state == KazooState.SUSPENDED
 
 @pytest.mark.asyncio
 async def test_session_lost(deadman_plugin):
