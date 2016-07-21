@@ -424,11 +424,6 @@ class App:
                 self.logger.info('There is a new master: {}, stop trying to take over'.format(self._master_lock_owner))
                 break
             if self._am_i_best_replica():
-                # re-check my local state
-                self.update_state()
-                if self._state['willing'] is None:
-                    self.logger.info('Abstaining from leader election as recheck of local state rendered me unwilling')
-                    continue
                 # try get the master lock, if this suceeds, master_lock_change will be called again
                 # and will bring us out of replication
                 self.logger.info('I am one of the best, trying to get the master lock')
