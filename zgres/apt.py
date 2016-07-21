@@ -351,19 +351,21 @@ class AptPostgresqlPlugin:
         with open(trigger_file, 'w') as f:
             f.write('touched')
         time.sleep(0.2)
-        count = 0
-        while count < 60:
+        while True:
+            # it might seem like a nice idea to timeout here, but it is NOT
+            #
+            # Postgres might be in recovery mode replaying WAL which can take
+            # an ARBITRARY time. but it is on it's way to becoming a master.
+            #
+            # This can happen if we kill the whole cluster and just start
+            # again from the archive
             try:
                 if not self._pg_is_in_recovery():
                     break
             except psycopg2.OperationalError as e:
                 pass
             logging.info('waiting for postgresql to come out of recovery')
-            count += 1
             time.sleep(1)
-        else:
-            # hmm, what to do here?
-            raise Exception('postgresql did not come out of recovery mode')
         if self._set_config_values('master.'):
             self.pg_reload()
 
