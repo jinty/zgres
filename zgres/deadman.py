@@ -169,6 +169,7 @@ class App:
     tick_time = None
     _exit_code = 0
     _master_lock_owner = None
+    _stopping = False
 
     def __init__(self, config):
         self.health_problems = {}
@@ -249,6 +250,7 @@ class App:
         returns None if initialzation was successful
         or a number of seconds to wait before trying again to initialize
         """
+        assert not self._stopping
         self.unhealthy('zgres.initialize', 'Initializing')
         self.logger.info('Initializing plugins')
         self._plugins.initialize()
@@ -483,6 +485,7 @@ class App:
         self._plugins.dcs_set_conn_info(self._conn_info)
 
     def run(self):
+        assert not self._stopping
         loop = asyncio.get_event_loop()
         self.logger.info('Starting')
         timeout = self.initialize()
@@ -505,6 +508,11 @@ class App:
         loop.stop()
 
     def restart(self, timeout):
+        if self._stopping:
+            # first call to restart() wins
+            self.logger.info('Already stopping, I wanted to wait {} ticks. but not going to interfere.'.format(timeout))
+            return
+        self._stopping = True
         if self._plugins.pg_replication_role() == 'master':
             # If we are master, we must stop postgresql to avoid a split brain
             self._plugins.pg_stop()
@@ -512,6 +520,8 @@ class App:
         if timeout:
             self.logger.info('sleeping for {} ticks, then restarting'.format(timeout))
             self._sleep(timeout) # yes, this blocks everything. that's the point of it!
+        else:
+            self.logger.info('restarting immediately')
         self._stop()
 
     def pg_connect_info(self):

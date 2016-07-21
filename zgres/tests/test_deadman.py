@@ -402,7 +402,13 @@ async def test_master_lock_broken(app):
             call.dcs_disconnect()
             ]
     assert app._master_lock_owner == None
+
+@pytest.mark.asyncio
+async def test_master_lock_changes_owner(app):
     # if the lock changes owner to someone else, shutdown postgresql and exist
+    plugins = setup_plugins(app,
+            pg_replication_role='master')
+    assert app.initialize() == None
     plugins.reset_mock()
     with patch('time.sleep') as sleep:
         with patch('sys.exit') as exit:
