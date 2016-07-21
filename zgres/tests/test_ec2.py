@@ -63,6 +63,7 @@ def ec2_backup_plugin():
     from ..ec2 import Ec2SnapshotBackupPlugin
     return Ec2SnapshotBackupPlugin('zgres#ec2-backup', app)
 
+@pytest.mark.xfail
 @mock_ec2
 @mock.patch('zgres.ec2.psycopg2')
 @mock.patch('boto.utils.get_instance_metadata', autospec=True)
