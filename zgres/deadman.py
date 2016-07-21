@@ -334,7 +334,8 @@ class App:
             if v != existing:
                 changed = True
                 self._state[k] = v
-        changed = self._update_auto_state() or changed
+        if changed:
+            changed = self._update_auto_state() or changed
         if changed and 'zgres.initialize' not in self.health_problems:
             # don't update state in the DCS till we are finished updating
             self._plugins.dcs_set_state(self._state.copy())
