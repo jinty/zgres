@@ -60,6 +60,9 @@ def running_plugin(request, plugin, cluster):
 def test_config_file(plugin, cluster):
     assert plugin._config_file(name='pg_hba.conf') == '/etc/postgresql/{}/{}/pg_hba.conf'.format(*cluster)
 
+async def _disabled_monitor():
+    return
+
 @pytest.mark.asyncio
 async def test_monitoring(plugin, cluster):
     with mock.patch('zgres.apt.sleep') as sleep, mock.patch('zgres.apt.call') as subprocess_call, mock.patch('zgres.apt.AptPostgresqlPlugin._monitor_select1') as ignored:
@@ -73,6 +76,7 @@ async def test_monitoring(plugin, cluster):
         subprocess_call.side_effect = retvals
         sleeper = FakeSleeper(max_loops=len(retvals) + 1)
         sleep.side_effect = sleeper
+        plugin._monitor_replication_role = _disabled_monitor
         plugin.start_monitoring()
         await sleeper.wait()
         assert plugin.app.mock_calls == [
