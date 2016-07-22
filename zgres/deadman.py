@@ -279,6 +279,9 @@ class App:
                 owner = self._plugins.dcs_get_lock_owner('master')
                 self.logger.info('Failed to get master lock ({} has it), checking if a new master is running yet'.format(owner))
                 self._plugins.pg_stop()
+                # XXX this is NOT true if our master was recovering while the other master started up
+                # hmm, wonder how we can do it properly? connect to the new master? firewalls?
+                # what state can we inspect?
                 my_timeline = self._plugins.pg_get_timeline()
                 existing_timeline = self._plugins.dcs_get_timeline()
                 if existing_timeline > my_timeline:
