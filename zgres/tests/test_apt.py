@@ -148,7 +148,7 @@ def test_timeline(plugin, cluster):
     assert plugin.pg_get_timeline() == 1
     plugin.pg_stop()
     # now test again as slave
-    plugin.pg_setup_replication()
+    plugin.pg_setup_replication(None)
     assert plugin.pg_get_timeline() == 1
     plugin.pg_start()
     assert plugin.pg_get_timeline() == 1
@@ -254,7 +254,7 @@ def test_setup_replication_restore_command(plugin, cluster):
     plugin.pg_start()
     plugin.pg_stop()
     plugin.app.config['apt']['restore_command'] = 'false'
-    plugin.pg_setup_replication()
+    plugin.pg_setup_replication(None)
     plugin.pg_start()
 
 @needs_root
@@ -283,7 +283,7 @@ def test_replication_role(plugin, cluster):
     assert plugin.pg_replication_role() == 'master'
     plugin.pg_stop()
     # setup replication and we get a replica
-    plugin.pg_setup_replication()
+    plugin.pg_setup_replication(None)
     assert plugin.pg_replication_role() == 'replica'
     plugin.pg_start()
     assert plugin.pg_replication_role() == 'replica'
