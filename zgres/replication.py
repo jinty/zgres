@@ -22,8 +22,8 @@ class FollowTheLeader:
         self._check_following()
 
     @subscribe
-    def notify_conn_info(self, connection_info):
-        self._current_conn_info = connection_info
+    def notify_conn_info(self, conn_info):
+        self._current_conn_info = conn_info
         self._check_following()
 
     def _check_following(self):

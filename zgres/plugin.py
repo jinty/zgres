@@ -1,14 +1,14 @@
 """Plugin Machinery"""
 import logging
+
 from pkg_resources import iter_entry_points
+import pluggy
 
 _missing = object()
 _logger = logging.getLogger('zgres')
 
-def subscribe(func):
-    """Mark a method as a zgres subscriber"""
-    func._zgres_subscriber = True
-    return func
+hookspec = pluggy.HookspecMarker('zgres')
+subscribe = pluggy.HookimplMarker('zgres')
 
 def load(config, section):
     """Gets the plugin factories from the config file.
@@ -65,54 +65,25 @@ def _handlers_executor_single(handlers, event_name):
         return result
     return call
 
-def get_event_handler(setup_plugins, events, logger=_logger):
+def get_plugin_manager(setup_plugins, events, logger=_logger):
     logger.info('Loading Plugins')
-    class Handler:
-        plugins = dict(setup_plugins)
-    event_names = set([])
-    for event_name in events:
-        if isinstance(event_name, dict):
-            spec = event_name.copy()
-            event_name = spec.pop('name')
-        else:
-            spec = dict(type='multiple',
-                    required=False)
-        assert not event_name.startswith('_')
-        event_names.add(event_name)
-        handlers = []
-        for name, plugin in setup_plugins:
-            handler = getattr(plugin, event_name, None)
-            if handler is None:
-                continue
-            if not getattr(handler, '_zgres_subscriber', False):
-                logger.debug('skiping method {} on plugin {} as it is not marked as a subscriber with @subscribe'.format(event_name, plugin))
-                continue
-            handlers.append((name, event_name, handler))
-        logger.info("loading event subscribers for {}: {}".format(event_name, ','.join([name for name, _, _ in handlers])))
-        if spec['required'] and not handlers:
-            raise AssertionError('At least one plugin must implement {}'.format(event_name))
-        if spec['type'] == 'multiple':
-            executor = _handlers_executor(handlers, event_name)
-        elif spec['type'] == 'single':
-            if len(handlers) > 1:
-                raise AssertionError('Only one plugin can implement {}'.format(event_name))
-            executor = _handlers_executor_single(handlers, event_name)
-        else:
-            raise NotImplementedError('unknown event spec type')
-        setattr(Handler, event_name, executor)
+    pm = pluggy.PluginManager('zgres')
+    pm.add_hookspecs(events)
+    setup_plugins = list(setup_plugins)
+    setup_plugins.reverse()
     for name, plugin in setup_plugins:
-        for attr in dir(plugin):
-            if attr in event_names:
-                continue
-            if attr.startswith('_'):
-                continue
-            val = getattr(plugin, attr)
-            subscriber = getattr(val, '_zgres_subscriber', _missing)
-            if subscriber is not _missing:
-                raise AssertionError('plugin {} has a subscriber I dont recognise: {}'.format(name, attr))
-    return Handler()
+        pm.register(plugin, name=name)
+    return pm
 
-def get_plugins(config, section, events, *plugin_config_args, **plugin_config_kw):
+def get_event_handler(setup_plugins, events, logger=_logger):
+    return get_plugin_manager(setup_plugins, events, logger=_logger).hook
+
+def get_plugins(config, section, hook_module, *plugin_config_args, **plugin_config_kw):
     plugins = load(config, section)
     plugins = configure(plugins, *plugin_config_args, **plugin_config_kw)
-    return get_event_handler(plugins, events)
+    return get_event_handler(plugins, hook_module)
+
+def setup_plugins(config, section, hook_module, *plugin_config_args, **plugin_config_kw):
+    plugins = load(config, section)
+    plugins = configure(plugins, *plugin_config_args, **plugin_config_kw)
+    return get_plugin_manager(plugins, hook_module)

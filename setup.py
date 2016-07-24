@@ -28,6 +28,7 @@ setup(name="zgres",
               'zookeeper = zgres.zookeeper:ZooKeeperDeadmanPlugin',
               ],
           },
+      install_reuires=['pluggy>=0.1.0,<1.0'],
       include_package_data = True,
       zip_safe = True,
       )

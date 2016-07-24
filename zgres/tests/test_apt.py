@@ -262,7 +262,7 @@ def test_setup_replication_with_conn_info(plugin, cluster):
     plugin.pg_initdb()
     plugin.pg_start()
     plugin.pg_stop()
-    plugin.pg_setup_replication(primary_conninfo=dict(host='127.0.0.1', port=5555))
+    plugin.pg_setup_replication(dict(host='127.0.0.1', port=5555))
     plugin.pg_start()
 
 @needs_root

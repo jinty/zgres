@@ -5,6 +5,9 @@ import pytest
 
 from . import FakeSleeper
 from . import deadman_app
+from . import mock_plugin
+from ..plugin import hook
+
 
 def fake_best_replicas(replicas):
     l = sorted(replicas, key=lambda x: x[1]['willing'])
@@ -42,23 +45,18 @@ def state_getter(app, *extra_states):
             yield id, state
     return dcs_list_state
 
-
 def setup_plugins(app, **kw):
-    plugins = app._plugins
-    plugins.best_replicas.side_effect = fake_best_replicas
-    from ..deadman import _PLUGIN_API
+    plugin = mock_plugin(app._pm)
+    plugin.best_replicas.side_effect = fake_best_replicas
     get_my_id = kw.get('get_my_id', '42')
     pg_replication_role = kw.get('pg_replication_role', 'replica')
     defaults = {
             'pg_replication_role': pg_replication_role,
             'pg_get_timeline': 1,
             'dcs_get_timeline': 1,
-            'get_conn_info': [('database', dict(host='127.0.0.1'))],
-            'master_lock_changed': NO_SUBSCRIBER,
-            'notify_conn_info': NO_SUBSCRIBER,
-            'notify_state': NO_SUBSCRIBER,
-            'veto_takeover': NO_SUBSCRIBER,
+            'get_conn_info': dict(host='127.0.0.1'),
             'get_my_id': get_my_id,
+            'dcs_set_database_identifier': True,
             'dcs_get_database_identifier': '12345',
             'pg_get_database_identifier': '12345',
             }
@@ -66,20 +64,9 @@ def setup_plugins(app, **kw):
         defaults['dcs_lock'] = True
     defaults.update(kw)
     for k, v in defaults.items():
-        for i in _PLUGIN_API:
-            if k == i['name']:
-                if i['type'] == 'multiple' and v is not NO_SUBSCRIBER:
-                    # assert that our test plugin data is really unpackable
-                    z = [(i, k) for i, k in v]
-                    v = iter(z) # make it a real iterable
-                break
-        if v is NO_SUBSCRIBER:
-            assert not i['required'], k
-            # no plugin provides this event
-            setattr(plugins, k, None)
-            continue
-        getattr(plugins, k).return_value = v
-    return plugins
+        func = getattr(plugin, k)
+        func.return_value = v
+    return plugin
 
 def test_master_bootstrap(app):
     plugins = setup_plugins(app,
@@ -87,7 +74,7 @@ def test_master_bootstrap(app):
             dcs_lock=True,
             pg_get_database_identifier='42')
     timeout = app.initialize()
-    assert app._plugins.mock_calls ==  [
+    assert plugins.mock_calls ==  [
             call.initialize(),
             call.get_my_id(),
             # check if we have a db identifier set
@@ -115,7 +102,7 @@ def test_master_boostrap_fails_to_lock_db_id(app):
             dcs_lock=False,
             pg_get_database_identifier='42')
     timeout = app.initialize()
-    assert app._plugins.mock_calls ==  [
+    assert plugins.mock_calls ==  [
             call.initialize(),
             call.get_my_id(),
             # check if we have a db identifier set
@@ -136,7 +123,7 @@ def test_replica_bootstrap(app):
             dcs_get_database_identifier='1234')
     plugins.pg_get_database_identifier.side_effect = ['42', '1234']
     timeout = app.initialize()
-    assert app._plugins.mock_calls ==  [
+    assert plugins.mock_calls ==  [
             call.initialize(),
             call.get_my_id(),
             # compare our id with the id in the DCS
@@ -147,7 +134,7 @@ def test_replica_bootstrap(app):
             # postgresql restore
             call.pg_initdb(),
             call.pg_restore(),
-            call.pg_setup_replication(),
+            call.pg_setup_replication(None),
             call.pg_get_database_identifier(),
             call.pg_replication_role()
             ]
@@ -160,7 +147,7 @@ def test_replica_bootstrap_fails_sanity_test(app):
             dcs_get_database_identifier='1234',
             pg_get_database_identifier='42')
     timeout = app.initialize()
-    assert app._plugins.mock_calls ==  [
+    assert plugins.mock_calls ==  [
             call.initialize(),
             call.get_my_id(),
             # compare our id with the id in the DCS
@@ -171,7 +158,7 @@ def test_replica_bootstrap_fails_sanity_test(app):
             # postgresql restore
             call.pg_initdb(),
             call.pg_restore(),
-            call.pg_setup_replication(),
+            call.pg_setup_replication(None),
             call.pg_get_database_identifier(),
             call.pg_replication_role(),
             call.pg_reset(),
@@ -206,9 +193,10 @@ async def test_master_start(app):
             # start monitoring
             call.start_monitoring(),
             call.dcs_watch(
-                master_lock=app.master_lock_changed,
-                conn_info=None,
-                state=None),
+                app.master_lock_changed,
+                app._plugins.notify_state,
+                app._plugins.notify_conn_info,
+            ),
             call.get_conn_info(),
             # set our first state
             call.dcs_set_state({
@@ -288,9 +276,10 @@ def test_replica_start(app):
             # start monitoring
             call.start_monitoring(),
             call.dcs_watch(
-                master_lock=app.master_lock_changed,
-                conn_info=None,
-                state=None),
+                app.master_lock_changed,
+                app._plugins.notify_state,
+                app._plugins.notify_conn_info,
+            ),
             # setup our connection info
             call.get_conn_info(),
             # set our first state
@@ -310,6 +299,10 @@ def test_replica_start(app):
     with patch('time.time') as mock_time:
         app.healthy('test_monitor')
     assert plugins.mock_calls ==  [
+            call.veto_takeover({'health_problems': {},
+                'a': 'b',
+                'replication_role': 'replica',
+                'host': '127.0.0.1'}),
             call.dcs_set_state({'health_problems': {},
                 'a': 'b',
                 'replication_role': 'replica',
@@ -320,29 +313,15 @@ def test_replica_start(app):
             call.dcs_set_conn_info({'a': 'b', 'host': '127.0.0.1'}),
            ]
 
-def test_plugin_subscribe_to_conn_info(app):
-    plugins = setup_plugins(app,
-            notify_conn_info=[('pluginA', None)],
-            )
-    app.initialize()
-    assert plugins.dcs_watch.mock_calls ==  [
-            call.dcs_watch(
-                master_lock=app.master_lock_changed,
-                conn_info=plugins.notify_conn_info,
-                state=None)
-            ]
-
 def test_plugin_subscribe_to_state(app):
-    plugins = setup_plugins(app,
-            notify_state=[('pluginA', None)],
-            )
+    plugins = setup_plugins(app)
     app.initialize()
     assert plugins.dcs_watch.mock_calls ==  [
             call.dcs_watch(
-                master_lock=app.master_lock_changed,
-                state=plugins.notify_state,
-                conn_info=None)
-            ]
+                app.master_lock_changed,
+                app._plugins.notify_state,
+                app._plugins.notify_conn_info,
+            )]
 
 def test_plugin_tells_app_to_follow_new_leader(app):
     plugins = setup_plugins(app)
@@ -351,7 +330,7 @@ def test_plugin_tells_app_to_follow_new_leader(app):
     app.follow(primary_conninfo=dict(host='127.0.0.9', port=5432))
     assert plugins.mock_calls == [
             call.pg_replication_role(),
-            call.pg_setup_replication(primary_conninfo={'port': 5432, 'host': '127.0.0.9'}),
+            call.pg_setup_replication({'port': 5432, 'host': '127.0.0.9'}),
             call.pg_restart()] # must restart for new recovery.conf to take effect
 
 def test_restart_master(app, event_loop):
@@ -363,7 +342,7 @@ def test_restart_master(app, event_loop):
         app.restart(10)
         assert sleep.called_once_with(10)
     event_loop.run_forever() # must be stopped by restart()
-    assert app._plugins.mock_calls ==  [
+    assert plugins.mock_calls ==  [
             call.pg_replication_role(),
             call.pg_stop(),
             call.dcs_disconnect()
@@ -378,7 +357,7 @@ def test_restart_replica(app, event_loop):
         app.restart(10)
         assert sleep.called_once_with(10)
     event_loop.run_forever() # must be stopped by restart()
-    assert app._plugins.mock_calls ==  [
+    assert plugins.mock_calls ==  [
             call.pg_replication_role(),
             call.dcs_disconnect()
             ]
@@ -395,11 +374,12 @@ async def test_master_lock_broken(app):
             app.master_lock_changed(None)
             assert exit.called_once_with(0)
         assert sleep.called_once_with(10)
-    assert app._plugins.mock_calls ==  [
+    assert plugins.mock_calls ==  [
             call.pg_replication_role(),
             call.pg_replication_role(),
             call.pg_stop(),
-            call.dcs_disconnect()
+            call.dcs_disconnect(),
+            call.master_lock_changed(None)
             ]
     assert app._master_lock_owner == None
 
@@ -415,11 +395,12 @@ async def test_master_lock_changes_owner(app):
             app.master_lock_changed('someone else')
             assert exit.called_once_with(0)
         assert sleep.called_once_with(10)
-    assert app._plugins.mock_calls ==  [
+    assert plugins.mock_calls ==  [
             call.pg_replication_role(),
             call.pg_replication_role(),
             call.pg_stop(),
-            call.dcs_disconnect()
+            call.dcs_disconnect(),
+            call.master_lock_changed('someone else')
             ]
     assert app._master_lock_owner == 'someone else'
     # if the lock is owned by us, carry on trucking
@@ -429,8 +410,9 @@ async def test_master_lock_changes_owner(app):
             app.master_lock_changed(app.my_id)
             assert exit.called_once_with(0)
         assert sleep.called_once_with(10)
-    assert app._plugins.mock_calls ==  [
+    assert plugins.mock_calls ==  [
             call.pg_replication_role(),
+            call.master_lock_changed('42')
             ]
     assert app._master_lock_owner == app.my_id
 
@@ -443,7 +425,7 @@ async def test_plugin_subscribes_to_master_lock_change(app):
     assert app.initialize() == None
     plugins.reset_mock()
     app.master_lock_changed('someone else')
-    assert app._plugins.mock_calls ==  [
+    assert plugins.mock_calls ==  [
             call.pg_replication_role(),
             call.master_lock_changed('someone else'),
             ]
@@ -458,15 +440,16 @@ async def test_replica_reaction_to_master_lock_change(app):
     # if the lock changes owner to someone else, carry on trucking
     plugins.reset_mock()
     app.master_lock_changed('someone else')
-    assert app._plugins.mock_calls ==  [
+    assert plugins.mock_calls ==  [
             call.pg_replication_role(),
+            call.master_lock_changed('someone else')
             ]
     assert app._master_lock_owner == 'someone else'
     # if the lock is owned by us, er, we stop replication and become the master
     plugins.reset_mock()
     plugins.pg_replication_role.side_effect = ['replica', 'master']
     app.master_lock_changed(app.my_id)
-    assert app._plugins.mock_calls ==  [
+    assert plugins.mock_calls ==  [
             call.pg_replication_role(),
             call.dcs_set_state({
                 'replication_role': 'taking-over',
@@ -482,6 +465,7 @@ async def test_replica_reaction_to_master_lock_change(app):
                 'replication_role': 'master',
                 'willing': None,
                 'host': '127.0.0.1'}),
+            call.master_lock_changed('42')
             ]
     assert app._master_lock_owner == app.my_id
 
@@ -493,7 +477,7 @@ async def test_replica_tries_to_take_over(app):
     plugins.reset_mock()
     # if there is no lock owner, we start looping trying to become master
     app.master_lock_changed(None)
-    assert app._plugins.mock_calls ==  [call.pg_replication_role()]
+    assert plugins.mock_calls ==  [call.pg_replication_role(), call.master_lock_changed(None)]
     plugins.reset_mock()
     from asyncio import sleep as real_sleep
     with patch('asyncio.sleep') as sleep:
@@ -502,14 +486,13 @@ async def test_replica_tries_to_take_over(app):
         # the first thing is to sleep a bit
         await sleeper.next()
         assert sleeper.log == [3]
-        assert app._plugins.mock_calls == []
+        assert plugins.mock_calls == []
         # takeover attempted
         states = [(app.my_id, {'willing': 99.0}), (app.my_id, {'willing': 100.0})]
-        plugins.dcs_list_state.side_effect = iter_states = [iter(states)]
+        plugins.dcs_list_state.return_value = states
         await sleeper.next()
         assert sleeper.log == [3, 3]
-        print(app._plugins.mock_calls)
-        assert app._plugins.mock_calls ==  [
+        assert plugins.mock_calls ==  [
                 call.dcs_list_state(),
                 call.best_replicas([('42', {'willing': 99.0}), ('42', {'willing': 100.0})]),
                 call.dcs_lock('master')]

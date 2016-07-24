@@ -45,12 +45,13 @@ async def test_functional(deadman_plugin):
         asyncio.get_event_loop().call_later(4 + 0.1 * i, set_ev)
     from . import MockSyncPlugin as RealMockSyncPlugin
     with mock.patch('zgres.tests.MockSyncPlugin') as MockSyncPlugin:
-        p = RealMockSyncPlugin('', '')
+        # sigh, FAR to complex
+        proxy, p = RealMockSyncPlugin('', '')
         p.databases.side_effect = set_ev
         p.state.side_effect = set_ev
         p.masters.side_effect = set_ev
         p.conn_info.side_effect = set_ev
-        MockSyncPlugin.return_value = p
+        MockSyncPlugin.return_value = proxy
         with mock.patch('zgres.zookeeper.KazooClient') as KazooClient:
             KazooClient.return_value = MyFakeClient(storage=deadmanA._storage._zk._storage)
             app = sync.SyncApp(config)
@@ -62,10 +63,9 @@ async def test_functional(deadman_plugin):
     for i in range(3):
         await next_ev()
     # the plugin was called twice, once with the original data, and once with new data
-    p.conn_info.assert_has_calls(
-            [mock.call({'mygroup': {'A': {'answer': 42}}}),
-                mock.call({'mygroup': {'A': {'answer': 42}, 'B': {'answer': 43}}})]
-            )
+    assert p.conn_info.mock_calls == [
+            mock.call({'mygroup': {'A': {'answer': 42}}}),
+            mock.call({'mygroup': {'A': {'answer': 42}, 'B': {'answer': 43}}})]
     p.state.assert_has_calls(
             [mock.call({'mygroup': {'B': {'mystate': 'lamentable'}}}),
                 mock.call({'mygroup': {'B': {'mystate': 'lamentable'}, 'A': {'mystate': 'great!'}}})]
@@ -203,7 +203,7 @@ async def test_notifications_of_state_chagnge_where_id_has_a_dash(deadman_plugin
     asyncio.get_event_loop().call_later(5, finished.set)
     callback = mock.Mock()
     callback.side_effect = lambda *args, **kw: finished.set()
-    pluginA.dcs_watch(state=callback)
+    pluginA.dcs_watch(None, callback, None)
     pluginA.dcs_set_state(dict(name='A'))
     await finished.wait()
     assert callback.mock_calls == [
@@ -216,11 +216,11 @@ async def test_groups_are_independant(deadman_plugin):
     pluginA, pluginB, pluginC = plugin('A'), plugin('B'), plugin('C')
     pluginC._group_name = 'another'
     # pluginB watches state, plugin A doesn't
-    pluginA.dcs_watch()
+    pluginA.dcs_watch(None, None, None)
     callbackB = mock.Mock()
-    pluginB.dcs_watch(state=callbackB)
+    pluginB.dcs_watch(None, callbackB, None)
     callbackC = mock.Mock()
-    pluginC.dcs_watch(state=callbackC)
+    pluginC.dcs_watch(None, callbackC, None)
     # set state from both plugins
     pluginA.dcs_set_state(dict(name='A'))
     pluginB.dcs_set_state(dict(name='B'))

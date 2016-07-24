@@ -370,7 +370,7 @@ class AptPostgresqlPlugin:
             self.pg_reload()
 
     @subscribe
-    def pg_setup_replication(self, primary_conninfo=None):
+    def pg_setup_replication(self, primary_conninfo):
         trigger_file = self._trigger_file()
         if os.path.exists(trigger_file):
             os.remove(trigger_file)

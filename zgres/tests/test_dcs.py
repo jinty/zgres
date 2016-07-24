@@ -11,10 +11,38 @@ def plugin(request):
         return deadman_plugin(request)
 
 @pytest.fixture
-def pluginAB(plugin):
-    pluginA = plugin(my_id='A')
-    pluginB = plugin(my_id='B')
+def pluginA(plugin):
+    return plugin(my_id='A')
+
+@pytest.fixture
+def pluginB(plugin):
+    return plugin(my_id='B')
+
+@pytest.fixture
+def pluginC(plugin):
+    return plugin(my_id='C')
+
+@pytest.fixture
+def pluginAB(pluginA, pluginB):
     return pluginA, pluginB
+
+@pytest.fixture
+def pmA(pluginA):
+    from zgres.plugin import get_plugin_manager
+    from zgres import deadman
+    return get_plugin_manager([('A', pluginA)], deadman).hook
+
+@pytest.fixture
+def pmB(pluginB):
+    from zgres.plugin import get_plugin_manager
+    from zgres import deadman
+    return get_plugin_manager([('B', pluginB)], deadman).hook
+
+@pytest.fixture
+def pmC(pluginC):
+    from zgres.plugin import get_plugin_manager
+    from zgres import deadman
+    return get_plugin_manager([pluginC], deadman).hook
 
 def test_database_identifier(pluginAB):
     pluginA, pluginB = pluginAB
@@ -113,26 +141,25 @@ def test_info_is_ephemeral(plugin):
     assert sorted(pluginA2.dcs_list_conn_info()) == []
 
 @pytest.mark.asyncio
-async def test_master_lock_notification(plugin):
-    pluginA, pluginB = plugin('A'), plugin('B')
+async def test_master_lock_notification(pmA, pmB):
     master_lock_watcher = mock.Mock()
-    pluginB.dcs_watch(master_lock=master_lock_watcher)
+    pmB.dcs_watch(master_lock=master_lock_watcher, conn_info=None, state=None)
     await asyncio.sleep(0.001)
-    pluginA.dcs_lock('master') # A
+    pmA.dcs_lock(name='master') # A
     await asyncio.sleep(0.001)
-    pluginA.dcs_lock('master') # no-op
+    pmA.dcs_lock(name='master') # no-op
     await asyncio.sleep(0.001)
-    pluginA.dcs_unlock('master') # None
+    pmA.dcs_unlock(name='master') # None
     await asyncio.sleep(0.001)
-    pluginA.dcs_unlock('master') # no-op
+    pmA.dcs_unlock(name='master') # no-op
     await asyncio.sleep(0.001)
-    pluginA.dcs_lock('master') # A
+    pmA.dcs_lock(name='master') # A
     await asyncio.sleep(0.001)
-    pluginA.dcs_unlock('master') # None
+    pmA.dcs_unlock(name='master') # None
     await asyncio.sleep(0.001)
-    pluginB.dcs_lock('master') # B
+    pmB.dcs_lock(name='master') # B
     await asyncio.sleep(0.001)
-    pluginB.dcs_unlock('master') # None
+    pmB.dcs_unlock(name='master') # None
     await asyncio.sleep(0.001)
     assert master_lock_watcher.mock_calls == [
             mock.call(None),
@@ -173,43 +200,41 @@ def test_timelines_persist(pluginAB):
     assert pluginB.dcs_get_timeline() == 49
 
 @pytest.mark.asyncio
-async def test_notifications_of_state_chagnges(plugin):
-    pluginA, pluginB = plugin('A'), plugin('B')
-    # pluginB watches state, plugin A doesn't
-    pluginA.dcs_watch()
+async def test_notifications_of_state_chagnges(pmA, pmB):
+    # pmB watches state, plugin A doesn't
+    pmA.dcs_watch(master_lock=None, conn_info=None, state=None)
     callbackB = mock.Mock()
-    pluginB.dcs_watch(state=callbackB)
+    pmB.dcs_watch(master_lock=None, conn_info=None, state=callbackB)
     # set state from both plugins
-    pluginA.dcs_set_state(dict(name='A'))
-    pluginB.dcs_set_state(dict(name='B'))
+    pmA.dcs_set_state(state=dict(name='A'))
+    pmB.dcs_set_state(state=dict(name='B'))
     await asyncio.sleep(0.005)
-    # pluginB gets events, but ONLY from plugins in its group
+    # pmB gets events, but ONLY from plugins in its group
     # i.e. c is ignored
     # NOTE: we test only the LAST call as state for A and B may come out-of-order
     #       but the final, rest state, should be correct
     assert callbackB.mock_calls[-1] == mock.call({'A': {'name': 'A'}, 'B': {'name': 'B'}})
     # if we ask for the state, we get the same result
-    assert sorted(pluginA.dcs_list_state()) == sorted(pluginB.dcs_list_state())
-    assert sorted(pluginA.dcs_list_state()) == [('A', {'name': 'A'}), ('B', {'name': 'B'})]
+    assert sorted(pmA.dcs_list_state()) == sorted(pmB.dcs_list_state())
+    assert sorted(pmA.dcs_list_state()) == [('A', {'name': 'A'}), ('B', {'name': 'B'})]
 
 @pytest.mark.asyncio
-async def test_notifications_of_conn_chagnges(plugin):
-    pluginA, pluginB = plugin('A'), plugin('B')
+async def test_notifications_of_conn_chagnges(pmA, pmB):
     # pluginB watches conn, plugin A doesn't
-    pluginA.dcs_watch()
+    pmA.dcs_watch(master_lock=None, conn_info=None, state=None)
     callbackB = mock.Mock()
-    pluginB.dcs_watch(conn_info=callbackB)
+    pmB.dcs_watch(master_lock=None, conn_info=callbackB, state=None)
     # set conn from both plugins
-    pluginA.dcs_set_conn_info(dict(name='A'))
-    pluginB.dcs_set_conn_info(dict(name='B'))
+    pmA.dcs_set_conn_info(conn_info=dict(name='A'))
+    pmB.dcs_set_conn_info(conn_info=dict(name='B'))
     await asyncio.sleep(0.005) #sigh, the DCS may use threading, give that a chance
-    # pluginB gets events, but ONLY from plugins in its group
+    # pmB gets events, but ONLY from plugins in its group
     # i.e. c is ignored
     # NOTE: we test only the LAST call as conn for A and B may come out-of-order
     #       but the final, rest conn, should be correct
     assert callbackB.mock_calls[-1] == mock.call({'A': {'name': 'A'}, 'B': {'name': 'B'}})
-    assert sorted(pluginA.dcs_list_conn_info()) == sorted(pluginB.dcs_list_conn_info())
-    assert sorted(pluginA.dcs_list_conn_info()) == [('A', {'name': 'A'}), ('B', {'name': 'B'})]
+    assert sorted(pmA.dcs_list_conn_info()) == sorted(pmB.dcs_list_conn_info())
+    assert sorted(pmA.dcs_list_conn_info()) == [('A', {'name': 'A'}), ('B', {'name': 'B'})]
 
 def test_info_set_from_another_plugin_ephemeral(plugin):
     # 2 servers with the same id should NOT happen in real life...

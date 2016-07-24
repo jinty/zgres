@@ -1,9 +1,22 @@
+import sys
 from unittest.mock import patch, Mock
 from configparser import ConfigParser
 
 import pytest
 
 from ..plugin import *
+
+@hookspec
+def event(arg1):
+    pass
+
+@hookspec
+def other_event(arg1, arg2):
+    pass
+
+@hookspec
+def no_op_event(arg1, arg2):
+    pass
 
 class Plugin1:
 
@@ -90,17 +103,14 @@ def test_get_event_handler():
             ('plugin2', Plugin2),
             ('plugin3', Plugin1),
             ], log)
-    handler = get_event_handler(plugins, ['no_op_event', 'event', 'other_event'])
+    handler = get_event_handler(plugins, sys.modules[__name__])
     assert log == []
-    # The no-op event has no handlers, so it is defined as None
-    assert handler.no_op_event is None
+    # The no-op event has no handlers, but it can still be called
+    assert handler.no_op_event(arg1='a', arg2='b') == []
     # Call the real event
-    result = handler.event('hey')
-    assert result == [
-        ('plugin1', None),
-        ('plugin2', 'hey-ho'),
-        ('plugin3', None),
-        ]
+    result = handler.event(arg1='hey')
+    assert result == ['hey-ho']
+    print(log)
     assert log == [
         ('plugin1', 'event', 'hey'),
         ('plugin2', 'event', 'hey'),
@@ -108,21 +118,11 @@ def test_get_event_handler():
         ]
     log[:] = []
     # with non-returning events, the events are just called
-    result = handler.other_event(1, 5)
-    assert result == [('plugin2', 6)]
+    result = handler.other_event(arg1=1, arg2=5)
+    assert result == [6]
     assert log == [
         ('plugin2', 'other_event', 1, 5),
         ]
-
-def test_error_where_plugin_mis_names_event():
-    log = []
-    plugins = configure([
-            ('plugin1', Plugin1),
-            ], log)
-    get_event_handler(plugins, ['event'])
-    with pytest.raises(AssertionError) as exec:
-        get_event_handler(plugins, ['evont_wuth_typo'])
-
 
 def test_get_event_handler_with_single_event():
     # Test an "single" event. This is an event which can not have more than one handler
@@ -130,27 +130,39 @@ def test_get_event_handler_with_single_event():
     plugins = configure([
             ('plugin2', Plugin2),
             ], log)
-    handler = get_event_handler(plugins, [dict(name='event', type='single', required=True), 'other_event'])
+    class Spec:
+
+        @hookspec(firstresult=True)
+        def event(self, arg1):
+            pass
+
+        @hookspec
+        def other_event(self, arg1, arg2):
+            pass
+    handler = get_event_handler(plugins, Spec)
     # Call the real event
-    result = handler.event('hey')
+    result = handler.event(arg1='hey')
     assert result == 'hey-ho'
     assert log == [
         ('plugin2', 'event', 'hey'),
         ]
-    # it is an error to configure no handlers for this event
+    # If more than one plugin is registed, the first non-null result is used
+    class Plugin:
+
+        def __init__(self, name, log):
+            self.log = log
+            self.name = name
+
+        @subscribe
+        def event(self, arg1):
+            self.log.append((self.name, 'event', arg1))
+            return arg1 + '-he'
+
     plugins = configure([
+            ('pluginA', Plugin1),
+            ('pluginB', Plugin),
+            ('pluginC', Plugin2),
             ], log)
-    with pytest.raises(AssertionError) as exec:
-        handler = get_event_handler(plugins, [dict(name='event', type='single', required=True)])
-    # unless not required
-    plugins = configure([
-            ], log)
-    handler = get_event_handler(plugins, [dict(name='event', type='single', required=False)])
-    assert handler.event is None
-    # and more than one is allways an error
-    plugins = configure([
-            ('plugin1', Plugin1),
-            ('plugin2', Plugin2),
-            ], log)
-    with pytest.raises(AssertionError) as exec:
-        handler = get_event_handler(plugins, [dict(name='event', type='single', required=True)])
+    handler = get_event_handler(plugins, Spec)
+    result = handler.event(arg1='hey')
+    assert result == 'hey-he'

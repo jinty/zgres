@@ -15,7 +15,12 @@ async def test_functional():
     """Test as much of the whole stack as we can."""
     config = {'deadman': {
         'plugins': 'zgres#zookeeper\nzgres#apt\nzgres#ec2-snapshot\nzgres#ec2\nzgres#follow-the-leader\nzgres#select-furthest-ahead-replica',
-        }}
+        },
+        'apt': {
+            'postgresql_cluster_name': 'main',
+            'postgresql_version': '9.5',
+            },
+        }
     zk = FakeClient()
     with mock.patch('zgres.zookeeper.KazooClient') as KazooClient, \
             mock.patch('zgres.ec2.boto.utils.get_instance_metadata'):

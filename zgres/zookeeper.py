@@ -186,7 +186,7 @@ class ZooKeeperSource:
             self._path_prefix += '/'
 
     @subscribe
-    def start_watching(self, state=None, conn_info=None, masters=None, databases=None):
+    def start_watching(self, state, conn_info, masters, databases):
         self._storage = ZookeeperStorage(
                 self.app.config['zookeeper']['connection_string'],
                 self.app.config['zookeeper']['path'].strip(),
@@ -196,7 +196,10 @@ class ZooKeeperSource:
         if state is not None:
             self._storage.dcs_watch_state(state)
         if conn_info is not None:
+            print('CONNECT_CONN_INFO', conn_info)
             self._storage.dcs_watch_conn_info(conn_info)
+        else:
+            print('SKIP CONNECT_CONN_INFO', conn_info)
         if masters is not None:
             self._storage.dcs_watch_locks('master', masters)
         if databases is not None:
@@ -295,7 +298,7 @@ class ZooKeeperDeadmanPlugin:
         return f
 
     @subscribe
-    def dcs_watch(self, master_lock=None, state=None, conn_info=None):
+    def dcs_watch(self, master_lock, state, conn_info):
         if master_lock is not None:
             self._storage.dcs_watch_lock('master', self._group_name, master_lock)
         if state is not None:
@@ -343,14 +346,14 @@ class ZooKeeperDeadmanPlugin:
         self._takeovers[path] = True
 
     @subscribe
-    def dcs_set_conn_info(self, data):
-        how = self._retry('dcs_set_conn_info', self._group_name, self.app.my_id, data)
+    def dcs_set_conn_info(self, conn_info):
+        how = self._retry('dcs_set_conn_info', self._group_name, self.app.my_id, conn_info)
         if how == 'takeover':
             self._log_takeover('conn/{}/{}'.format(self._group_name, self.app.my_id))
 
     @subscribe
-    def dcs_set_state(self, data):
-        how = self._retry('dcs_set_state', self._group_name, self.app.my_id, data)
+    def dcs_set_state(self, state):
+        how = self._retry('dcs_set_state', self._group_name, self.app.my_id, state)
         if how == 'takeover':
             self._log_takeover('state/{}/{}'.format(self._group_name, self.app.my_id))
 

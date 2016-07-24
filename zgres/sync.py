@@ -5,6 +5,27 @@ import argparse
 import zgres.plugin
 import zgres.config
 from zgres import utils
+from zgres.plugin import hookspec
+
+@hookspec
+def start_watching(state, conn_info, masters, databases):
+    pass
+
+@hookspec
+def state(state):
+    pass
+
+@hookspec
+def conn_info(conn_info):
+    pass
+
+@hookspec
+def masters(masters):
+    pass
+
+@hookspec
+def databases(databases):
+    pass
 
 class SyncApp:
     """Synchronize local machine configuration with the current postgresql state.
@@ -26,23 +47,27 @@ class SyncApp:
 
     def __init__(self, config):
         self.config = config
-        self._plugins = zgres.plugin.get_plugins(
+        self._pm = zgres.plugin.setup_plugins(
                 config,
                 'sync',
-                ['state',
-                    'conn_info',
-                    'databases',
-                    'masters',
-                    dict(name='start_watching', required=True, type='single')],
+                sys.modules[__name__],
                 self)
-        if self._plugins.state is None and self._plugins.conn_info is None:
-            raise Exception('No plugins configured for zgres-sync')
+        self._plugins = self._pm.hook
         self._plugins.start_watching(
-                state=self._plugins.state,
-                conn_info=self._plugins.conn_info,
-                masters=self._plugins.masters,
-                databases=self._plugins.databases,
+                state=self._only_if_has_plugins(self._plugins.state, 'state'),
+                conn_info=self._only_if_has_plugins(self._plugins.conn_info, 'conn_info'),
+                masters=self._only_if_has_plugins(self._plugins.masters, 'masters'),
+                databases=self._only_if_has_plugins(self._plugins.databases, 'databases'),
                 ) # start watching for cluster events.
+
+    def _only_if_has_plugins(self, hookimpl, kw):
+        if hookimpl._nonwrappers or hookimpl._wrappers:
+            def f(val):
+                args = {kw: val}
+                return hookimpl(**args)
+            return f
+        return None
+
 
 #
 # Command Line Scripts
