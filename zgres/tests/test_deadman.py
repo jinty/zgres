@@ -6,7 +6,6 @@ import pytest
 from . import FakeSleeper
 from . import deadman_app
 from . import mock_plugin
-from ..plugin import hook
 
 
 def fake_best_replicas(replicas):
