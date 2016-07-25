@@ -326,8 +326,8 @@ class App:
         self.logger.info('Starting to watch the DCS for events')
         self._plugins.dcs_watch(
                 master_lock=self.master_lock_changed,
-                state=self._plugins.notify_state,
-                conn_info=self._plugins.notify_conn_info)
+                state=self._notify_state,
+                conn_info=self._notify_conn_info)
         self._get_conn_info_from_plugins()
         self.healthy('zgres.initialize')
         if self.health_problems:
@@ -425,6 +425,12 @@ class App:
                 loop = asyncio.get_event_loop()
                 loop.call_soon(loop.create_task, self._try_takeover())
         self._plugins.master_lock_changed(owner=owner)
+
+    def _notify_state(self, state):
+        self._plugins.notify_state(state=state)
+
+    def _notify_conn_info(self, conn_info):
+        self._plugins.notify_conn_info(conn_info=conn_info)
 
     def _willing_replicas(self):
         return willing_replicas(self._plugins.dcs_list_state())
