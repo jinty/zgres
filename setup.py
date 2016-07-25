@@ -6,6 +6,8 @@ from setuptools import setup, find_packages
 setup(name="zgres",
       version=version.getVersion(),
       packages=find_packages(),
+      author='Brian Sutherland',
+      author_email='brian@vanguardistas.net',
       description="Database Connection and failover manager for PostgreSQL",
       entry_points={
           'console_scripts': [
