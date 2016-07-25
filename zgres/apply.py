@@ -136,21 +136,21 @@ class Plugin:
                 }
 
     @subscribe
-    def databases(self, state):
-        _logger.info('New database list {}'.format(state))
-        self._state['databases'] = state
+    def databases(self, databases):
+        _logger.info('New database list {}'.format(databases))
+        self._state['databases'] = databases
         self._write()
 
     @subscribe
-    def masters(self, state):
-        _logger.info('New masters list {}'.format(state))
-        self._state['masters'] = state
+    def masters(self, masters):
+        _logger.info('New masters list {}'.format(masters))
+        self._state['masters'] = masters
         self._write()
 
     @subscribe
-    def conn_info(self, state):
-        _logger.info('New conn_info list {}'.format(state))
-        self._state['conn_info'] = state
+    def conn_info(self, conn_info):
+        _logger.info('New conn_info list {}'.format(conn_info))
+        self._state['conn_info'] = conn_info
         self._write()
 
     def _write(self):
