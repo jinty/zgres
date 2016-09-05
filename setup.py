@@ -8,6 +8,7 @@ setup(name="zgres",
       packages=find_packages(),
       author='Brian Sutherland',
       author_email='brian@vanguardistas.net',
+      url='https://github.com/jinty/zgres',
       description="Database Connection and failover manager for PostgreSQL",
       entry_points={
           'console_scripts': [
