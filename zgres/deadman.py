@@ -196,7 +196,6 @@ class App:
     tick_time = None
     _exit_code = 0
     _master_lock_owner = None
-    _stopping = False
 
     def __init__(self, config):
         self.health_problems = {}
@@ -278,7 +277,6 @@ class App:
         returns None if initialzation was successful
         or a number of seconds to wait before trying again to initialize
         """
-        assert not self._stopping
         self.unhealthy('zgres.initialize', 'Initializing')
         self.logger.info('Initializing plugins')
         self._plugins.initialize()
@@ -522,7 +520,6 @@ class App:
         self._plugins.dcs_set_conn_info(conn_info=self._conn_info)
 
     def run(self):
-        assert not self._stopping
         loop = asyncio.get_event_loop()
         self.logger.info('Starting')
         timeout = self.initialize()
@@ -545,21 +542,26 @@ class App:
         loop.stop()
 
     def restart(self, timeout):
-        if self._stopping:
-            # first call to restart() wins
-            self.logger.info('Already stopping, I wanted to wait {} ticks. but not going to interfere.'.format(timeout))
-            return
-        self._stopping = True
+        self.logger.warn('Shutting Down')
+        # If we are master, our priority is to stop
+        # postgresql to avoid a split brain
         if self._plugins.pg_replication_role() == 'master':
-            # If we are master, we must stop postgresql to avoid a split brain
+            self.logger.warn('We are master, stopping PostgreSQL')
             self._plugins.pg_stop()
+        # we tell asyncio to stop here so even if the following code errors,
+        # we will still terminate the process but we do want to be sure
+        # that postgres is stopped on master before we do that
+        self.logger.warn('Telling asyncio to stop')
+        self._stop()
+        # TODO: deal with very long timeouts/hangs in the following code here
+        #       perhaps spawn a thread to kill -9 ourselves?
+        # now we try clean up gracefully
+        self.logger.warn('disconnecting DCS')
         self._plugins.dcs_disconnect()
         if timeout:
-            self.logger.info('sleeping for {} ticks, then restarting'.format(timeout))
+            self.logger.warn('sleeping for {} ticks, then restarting'.format(timeout))
             self._sleep(timeout) # yes, this blocks everything. that's the point of it!
-        else:
-            self.logger.info('restarting immediately')
-        self._stop()
+        self.logger.warn('Finished Shut Down')
 
     def pg_connect_info(self):
         # expose pg_connect for other plugins to use
