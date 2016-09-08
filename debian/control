@@ -26,3 +26,9 @@ Depends: python3-zgres, ${misc:Depends}
 Description: Control/Monitor Postgresql and register with ZooKeeper
  Manages PostgreSQL database connections and failover for Master-Slave
  clusters
+
+Package: zgres-deadman-exporter
+Architecture: all
+Depends: python3-zgres, zgres-deadman, ${misc:Depends}
+Description: Prometheus Exporter for zgres-deadman daemon
+ Exports statistics for zgres-deadman on the same machine

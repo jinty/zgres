@@ -1,0 +1,12 @@
+[Unit]
+Description=Zgres Deadman Exporter
+After=zgres-deadman.service
+
+[Service]
+User=root
+ExecStart=/usr/bin/zgres-deadman-exporter
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
