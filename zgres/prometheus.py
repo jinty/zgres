@@ -54,8 +54,13 @@ def deadman_exporter(argv=sys.argv):
                 if id == my_id:
                     dcs_has_conn_info = 1
                     break
-        except:
+        except Exception:
             logging.exception('Check failed')
+        finally:
+            try:
+                plugins.dcs_disconnect()
+            except Exception:
+                logging.exception('Disconnect failed')
         metric_dcs_has_conn_info.set(dcs_has_conn_info)
         metric_dcs_is_willing_replica.set(dcs_is_willing_replica)
         sleep(60)
