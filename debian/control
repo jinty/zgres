@@ -8,7 +8,7 @@ X-Python3-Version: >= 3.5
 
 Package: python3-zgres
 Architecture: all
-Depends: python3-kazoo, python3-pluggy, python3.5, ${misc:Depends}
+Depends: python3-kazoo, python3-pluggy, python3-prometheus-client, python3.5, ${misc:Depends}
 Description: PostgreSQL database connection and failover manager
  Manages PostgreSQL database connections and failover for Master-Slave
  clusters
