@@ -28,39 +28,35 @@ def deadman_exporter(argv=sys.argv):
     """
     parser = argparse.ArgumentParser(description="Prometheus statistics daemon for zgres-deadman")
     config = parse_args(parser, argv, config_file='deadman.ini')
+    # this sleep prevents us from restarting too fast and systemd failing to restart us
+    # we use a fail-always architecture here, any exception causes a daemon restart
+    sleep(10)
     start_http_server(9163)
+    # use only one plugin and zookeeper connection, otherwise we get memory leaks :(
+    plugins = App(config)._plugins
+    plugins.initialize()
     while True:
         dcs_has_conn_info = 0
         dcs_is_willing_replica = 0
-        try:
-            # HACK, we only need the plugins, really
-            plugins = App(config)._plugins
-            plugins.initialize()
-            all_state = list(plugins.dcs_list_state())
-            my_id = plugins.get_my_id()
-            for id, state in all_state:
-                if id == my_id:
-                    if 'master' == state.get('replication_role'):
-                        metric_dcs_is_master.set(1)
-                    else:
-                        metric_dcs_is_master.set(0)
-                    break
-            for id, state in willing_replicas(all_state):
-                if id == my_id:
-                    dcs_is_willing_replica = 1
-                    metric_dcs_willing_since.set(state['willing'])
-                    break
-            for id, conn_info in plugins.dcs_list_conn_info():
-                if id == my_id:
-                    dcs_has_conn_info = 1
-                    break
-        except Exception:
-            logging.exception('Check failed')
-        finally:
-            try:
-                plugins.dcs_disconnect()
-            except Exception:
-                logging.exception('Disconnect failed')
+        # HACK, we only need the plugins, really
+        all_state = list(plugins.dcs_list_state())
+        my_id = plugins.get_my_id()
+        for id, state in all_state:
+            if id == my_id:
+                if 'master' == state.get('replication_role'):
+                    metric_dcs_is_master.set(1)
+                else:
+                    metric_dcs_is_master.set(0)
+                break
+        for id, state in willing_replicas(all_state):
+            if id == my_id:
+                dcs_is_willing_replica = 1
+                metric_dcs_willing_since.set(state['willing'])
+                break
+        for id, conn_info in plugins.dcs_list_conn_info():
+            if id == my_id:
+                dcs_has_conn_info = 1
+                break
         metric_dcs_has_conn_info.set(dcs_has_conn_info)
         metric_dcs_is_willing_replica.set(dcs_is_willing_replica)
         sleep(60)
