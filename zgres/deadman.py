@@ -592,5 +592,9 @@ It does not:
     - do remastering (assumed to have happened before we start)
 """)
     config = zgres.config.parse_args(parser, argv, config_file='deadman.ini')
+    if 'connection_string' not in config['zookeeper']:
+        print('EXITING in 60 seconds: must configure zgres-deadman with a zookeeper connection string to start')
+        time.sleep(60)
+        sys.exit(0)
     app = App(config)
     sys.exit(app.run())

@@ -1,6 +1,5 @@
 [Unit]
 Description=Zgres Database Controller
-After=cloud-final.service
 
 [Service]
 User=root
