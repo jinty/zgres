@@ -88,7 +88,7 @@ replication.
 """)
     config = zgres.config.parse_args(parser, argv, config_file='sync.ini')
     if 'connection_string' not in config['zookeeper']:
-        print ('must configure zgres-sync with a zookeeper connection string to start')
+        print('EXITING: must configure zgres-sync with a zookeeper connection string to start')
         sys.exit(0)
     # Keep a reference to the App to prevent garbage collection
     app = SyncApp(config)
