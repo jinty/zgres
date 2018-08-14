@@ -32,7 +32,7 @@ setup(name="zgres",
               'zookeeper = zgres.zookeeper:ZooKeeperDeadmanPlugin',
               ],
           },
-      install_reuires=['pluggy>=0.1.0,<1.0', 'prometheus_client'],
+      install_requires=['pluggy>=0.1.0,<1.0', 'prometheus_client'],
       include_package_data = True,
       zip_safe = True,
       )
