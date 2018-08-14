@@ -111,9 +111,13 @@ class Ec2SnapshotBackupPlugin:
         # actually do the backup
         backup_id = str(self._uuid())
         pg_conn = psycopg2.connect(**self.app.pg_connect_info())
-        cur = pg_conn.cursor()
-        cur.execute("select pg_start_backup(%s);", (backup_id, ))
-        position = cur.fetchall()[0][0]
+        try:
+            cur = pg_conn.cursor()
+            cur.execute("select pg_start_backup(%s);", (backup_id, ))
+            position = cur.fetchall()[0][0]
+            pg_conn.commit()
+        finally:
+            pg_conn.close()
         try:
             for d in self._devices:
                 v = instance_volumes[d]
@@ -136,7 +140,12 @@ class Ec2SnapshotBackupPlugin:
                 if snapshot.status != 'completed':
                     raise Exception('Snapshot did not complete: {}'.format(snapshot.state))
         finally:
-            pg_conn.cursor().execute("select pg_stop_backup();")
+            pg_conn = psycopg2.connect(**self.app.pg_connect_info())
+            try:
+                pg_conn.cursor().execute("select pg_stop_backup();")
+                pg_conn.commit()
+            finally:
+                pg_conn.close()
 
     def _get_my_snapshots(self, conn):
         snapshots = {}
